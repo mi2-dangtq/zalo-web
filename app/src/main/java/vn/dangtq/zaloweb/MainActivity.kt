@@ -54,6 +54,7 @@ class MainActivity : Activity() {
     private lateinit var downloads: Downloads
     private var injectJs = ""
     private var injectCss = ""
+    private var mobileCss = ""
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var pendingPermission: PermissionRequest? = null
     private var clearHistoryOnLoad = false
@@ -64,6 +65,7 @@ class MainActivity : Activity() {
         prefs = Prefs(this)
         injectJs = readAsset("inject.js")
         injectCss = readAsset("inject.css")
+        mobileCss = readAsset("zalo-mobile.css")
 
         // Lets chrome://inspect on a PC attach to this WebView for writing custom CSS.
         WebView.setWebContentsDebuggingEnabled(true)
@@ -138,11 +140,12 @@ class MainActivity : Activity() {
             "(KHTML, like Gecko) Chrome/$major.0.0.0 Safari/537.36"
     }
 
-    /** Re-applies base CSS, custom CSS, viewport width and the download hooks (idempotent). */
+    /** Re-applies base/phone/custom CSS, viewport width and the download hooks (idempotent). */
     fun injectAll() {
         val config = JSONObject()
             .put("viewport", prefs.viewportWidth)
             .put("css", injectCss)
+            .put("mobileCss", if (prefs.mobileLayout) mobileCss else "")
             .put("customCss", prefs.customCss)
         webView.evaluateJavascript("window.__zwConfig=$config;\n$injectJs", null)
     }

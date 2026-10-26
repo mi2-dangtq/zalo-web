@@ -24,7 +24,21 @@ Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
 - Gọi thoại/video: xin quyền camera/micro khi Zalo yêu cầu (chỉ cấp cho domain Zalo).
 - Link ngoài Zalo mở bằng trình duyệt; domain giữ lại trong app:
   `*.zalo.me`, `*.zaloapp.com`, `*.zadn.vn`, `*.zdn.vn`, `*.zalo.vn`.
-- Nút nổi (kéo được) mở menu: tải lại, độ rộng hiển thị, cỡ chữ, CSS tùy chỉnh, đăng xuất/xóa dữ liệu.
+- Nút nổi (kéo được) mở menu: tải lại, giao diện điện thoại, độ rộng hiển thị, cỡ chữ,
+  CSS tùy chỉnh, đăng xuất/xóa dữ liệu.
+
+## Giao diện trên điện thoại
+
+Zalo Web tự chuyển sang chế độ **một khung** (danh sách chat ↔ khung chat, có nút quay lại)
+khi trang hẹp hơn khoảng 850px. Vì vậy:
+
+- **Độ rộng hiển thị → Tự động** (mặc định): giữ viewport `width=device-width` của Zalo,
+  trang hiển thị đúng tỉ lệ 1:1 như app điện thoại. Chọn 480/600/800… nếu muốn thu nhỏ để
+  thấy nhiều nội dung hơn.
+- **Giao diện điện thoại** (mặc định bật) chèn `assets/zalo-mobile.css`: ẩn banner quảng cáo
+  "Sử dụng Zalo PC" và ẩn thanh icon bên trái khi đang mở một cuộc chat để khung chat rộng hết
+  màn hình. File này phụ thuộc tên class của Zalo; nếu Zalo cập nhật làm vỡ giao diện, tắt nó
+  trong menu.
 
 ## Tinh chỉnh giao diện bằng CSS tùy chỉnh
 

@@ -1,0 +1,18 @@
+/*
+ * Phone layout tweaks that DO depend on Zalo Web's own class names (checked 2026-10-26).
+ * Toggled by "Giao diện điện thoại" in the floating menu; if a Zalo update breaks the
+ * layout, turn it off there. Generic rules live in inject.css.
+ *
+ * Zalo Web already switches to a single-pane "compact-mode" below ~850px: the chat list
+ * and the conversation take turns, with a back button (.conv-back-btn) in the chat header.
+ */
+
+/* Info banners at the top ("Sử dụng Zalo PC…"); warning/error banners stay visible. */
+.system-banner__container:has(.z-banner.--emphasis-info) {
+  display: none !important;
+}
+
+/* While a conversation is open, hide the 64px icon rail so the chat spans the full width. */
+#container:has(.conv-back-btn) #sidebarNav.compact-mode {
+  display: none !important;
+}

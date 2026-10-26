@@ -20,10 +20,15 @@ import kotlin.math.hypot
 class Prefs(context: Context) {
     private val sp = context.getSharedPreferences("zaloweb", Context.MODE_PRIVATE)
 
-    /** Layout width in CSS px injected via meta viewport; 0 = let WebView decide. */
+    /** Layout width in CSS px injected via meta viewport; 0 = keep Zalo's own width=device-width. */
     var viewportWidth: Int
-        get() = sp.getInt("viewport_width", 800)
+        get() = sp.getInt("viewport_width", 0)
         set(value) = sp.edit().putInt("viewport_width", value).apply()
+
+    /** Inject assets/zalo-mobile.css (Zalo-specific phone tweaks). */
+    var mobileLayout: Boolean
+        get() = sp.getBoolean("mobile_layout", true)
+        set(value) = sp.edit().putBoolean("mobile_layout", value).apply()
 
     var textZoom: Int
         get() = sp.getInt("text_zoom", 100)
@@ -48,7 +53,7 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
     companion object {
         private const val IDLE_ALPHA = 0.35f
         private const val ACTIVE_ALPHA = 0.85f
-        private val WIDTHS = intArrayOf(0, 600, 800, 1000, 1200)
+        private val WIDTHS = intArrayOf(0, 480, 600, 800, 1000, 1200)
         private val ZOOMS = intArrayOf(80, 90, 100, 110, 125, 150)
         private val DIALOG_THEME = android.R.style.Theme_Material_Light_Dialog_Alert
     }
@@ -148,6 +153,7 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
     private fun showMenu() {
         val items = arrayOf(
             "Tải lại trang",
+            "Giao diện điện thoại: ${if (prefs.mobileLayout) "Bật" else "Tắt"}",
             "Độ rộng hiển thị: ${widthLabel(prefs.viewportWidth)}",
             "Cỡ chữ: ${prefs.textZoom}%",
             "CSS tùy chỉnh",
@@ -158,18 +164,27 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
             .setItems(items) { _, which ->
                 when (which) {
                     0 -> activity.webView.reload()
-                    1 -> chooseWidth()
-                    2 -> chooseTextZoom()
-                    3 -> editCustomCss()
-                    4 -> confirmClearData()
+                    1 -> toggleMobileLayout()
+                    2 -> chooseWidth()
+                    3 -> chooseTextZoom()
+                    4 -> editCustomCss()
+                    5 -> confirmClearData()
                 }
             }
             .setNegativeButton("Đóng", null)
             .show()
     }
 
+    private fun toggleMobileLayout() {
+        prefs.mobileLayout = !prefs.mobileLayout
+        activity.applySettings()
+        activity.toast(if (prefs.mobileLayout) "Đã bật giao diện điện thoại" else "Đã tắt giao diện điện thoại")
+    }
+
     private fun chooseWidth() {
-        val labels = WIDTHS.map { if (it == 800) "${widthLabel(it)} (mặc định)" else widthLabel(it) }.toTypedArray()
+        val labels = WIDTHS.map {
+            if (it == 0) "${widthLabel(it)} — theo màn hình (khuyên dùng)" else widthLabel(it)
+        }.toTypedArray()
         AlertDialog.Builder(activity, DIALOG_THEME)
             .setTitle("Độ rộng hiển thị")
             .setSingleChoiceItems(labels, WIDTHS.indexOf(prefs.viewportWidth)) { dialog, which ->

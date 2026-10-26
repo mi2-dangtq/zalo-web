@@ -1,5 +1,6 @@
 // Injected by MainActivity.injectAll() after every page load and settings change.
-// window.__zwConfig = { viewport: <px, 0 = auto>, css: <base css>, customCss: <user css> }
+// window.__zwConfig = { viewport: <px, 0 = auto>, css: <base css>, mobileCss: <zalo-mobile css or ''>,
+//                       customCss: <user css> }
 (function () {
   'use strict';
   var cfg = window.__zwConfig || {};
@@ -19,23 +20,34 @@
   }
 
   setStyle('zw-base', cfg.css || '');
+  setStyle('zw-mobile', cfg.mobileCss || '');
   setStyle('zw-custom', cfg.customCss || '');
 
   // ---------------------------------------------------------------- Viewport
 
+  // Auto (0) keeps Zalo's own "width=device-width" meta; a fixed width overrides it.
+  // The original content is remembered in data-zw-orig so switching back to Auto restores it.
   var width = parseInt(cfg.viewport, 10) || 0;
   var meta = document.querySelector('meta[name="viewport"]');
+  if (meta && !meta.hasAttribute('data-zw-orig')) {
+    meta.setAttribute('data-zw-orig', meta.getAttribute('content') || '');
+  }
   if (width > 0) {
     if (!meta) {
       meta = document.createElement('meta');
       meta.name = 'viewport';
+      meta.setAttribute('data-zw-orig', '');
       head.appendChild(meta);
     }
     var content = 'width=' + width + ', user-scalable=yes';
     if (meta.getAttribute('content') !== content) meta.setAttribute('content', content);
-    meta.setAttribute('data-zw', '1');
-  } else if (meta && meta.getAttribute('data-zw') === '1') {
-    meta.parentNode.removeChild(meta);
+  } else if (meta) {
+    var original = meta.getAttribute('data-zw-orig');
+    if (original) {
+      if (meta.getAttribute('content') !== original) meta.setAttribute('content', original);
+    } else {
+      meta.parentNode.removeChild(meta);
+    }
   }
 
   // ---------------------------------------------------------------- Download hooks (once per page)
