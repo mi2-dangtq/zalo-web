@@ -27,6 +27,7 @@ Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
 - Mở app mượt: màn chờ có icon cho tới khi Zalo vẽ xong giao diện; không có hiệu ứng kéo quá
   đà ở cuối danh sách; giữ tay không bôi đen chữ/hiện thanh Sao chép (giữ tay lên tin nhắn
   vẫn mở menu tin nhắn của Zalo; ô nhập tin vẫn chọn chữ được).
+- Mở cuộc chat không tự bật bàn phím: chỉ bật khi bạn chạm vào ô nhập tin.
 - Link ngoài Zalo mở bằng trình duyệt; domain giữ lại trong app:
   `*.zalo.me`, `*.zaloapp.com`, `*.zadn.vn`, `*.zdn.vn`, `*.zalo.vn`.
 - Nút nổi (kéo được) mở menu: tải lại, giao diện điện thoại, độ rộng hiển thị, cỡ chữ,

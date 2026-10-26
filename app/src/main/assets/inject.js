@@ -134,10 +134,64 @@
     return false;
   };
 
-  // ---------------------------------------------------------------- Download hooks (once per page)
+  // ---------------------------------------------------------------- Hooks below install once per page
 
   if (window.__zwHooked) return;
   window.__zwHooked = true;
+
+  // ---------------------------------------------------------------- No surprise keyboard
+
+  // Zalo focuses the message box whenever a chat opens; on a phone that pops the keyboard.
+  // Only allow focusing a text field the user just touched (or touched right next to: Zalo's
+  // editor only turns contenteditable on while focused), or re-focusing one that was focused
+  // a moment ago (e.g. Zalo restoring focus after Send).
+  var FOCUS_GRACE_MS = 1000;
+  var NEAR_LEVELS = 4;
+  var lastDown = null;
+  var lastDownAt = 0;
+  var lastEditableFocus = 0;
+  var blocking = false;
+
+  function touchedNear(field) {
+    if (!lastDown || Date.now() - lastDownAt > FOCUS_GRACE_MS) return false;
+    for (var n = lastDown, i = 0; n && i <= NEAR_LEVELS; n = n.parentElement, i++) {
+      if (n.contains(field)) return true;
+    }
+    return false;
+  }
+
+  function editableOf(el) {
+    if (!el || el.nodeType !== 1) return null;
+    if (el.tagName === 'TEXTAREA') return el;
+    if (el.tagName === 'INPUT') {
+      return /^(text|search|email|tel|url|password|number|)$/.test(el.type || '') ? el : null;
+    }
+    return el.closest ? el.closest('[contenteditable=""], [contenteditable="true"]') : null;
+  }
+
+  document.addEventListener('pointerdown', function (ev) {
+    lastDown = ev.target;
+    lastDownAt = Date.now();
+  }, true);
+
+  document.addEventListener('focusin', function (ev) {
+    var field = editableOf(ev.target);
+    if (!field) return;
+    var now = Date.now();
+    if (touchedNear(field) || now - lastEditableFocus < FOCUS_GRACE_MS) {
+      lastEditableFocus = now;
+      return;
+    }
+    blocking = true; // our own blur must not count as "was focused a moment ago"
+    field.blur();
+    blocking = false;
+  }, true);
+
+  document.addEventListener('focusout', function (ev) {
+    if (!blocking && editableOf(ev.target)) lastEditableFocus = Date.now();
+  }, true);
+
+  // ---------------------------------------------------------------- Downloads
 
   var MAX_BLOBS = 40;
   // Zalo revokes blob URLs right after clicking, so keep the original Blob around ourselves.
