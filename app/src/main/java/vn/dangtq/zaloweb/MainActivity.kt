@@ -47,8 +47,12 @@ class MainActivity : Activity() {
 
     companion object {
         const val HOME_URL = "https://chat.zalo.me/"
+        private const val CHAT_HOST = "chat.zalo.me"
+        private const val LOGIN_HOST = "id.zalo.me"
         private const val REQ_FILE_CHOOSER = 1001
         private const val REQ_MEDIA_PERMISSIONS = 1002
+        private const val MAX_RENDERER_RESTARTS = 3
+        private const val RENDERER_RESTART_WINDOW_MS = 60_000L
 
         private val ZALO_DOMAINS = listOf("zalo.me", "zaloapp.com", "zadn.vn", "zdn.vn", "zalo.vn")
 
@@ -69,8 +73,13 @@ class MainActivity : Activity() {
     private var injectCss = ""
     private var mobileCss = ""
     private var fileCallback: ValueCallback<Array<Uri>>? = null
-    private var pendingPermission: PermissionRequest? = null
+    // Only one runtime-permission dialog can be up at a time; requests arriving meanwhile wait here.
+    private val pendingPermissions = mutableListOf<PermissionRequest>()
+    private var permissionDialogOpen = false
     private var clearHistoryOnLoad = false
+    private var resumed = false
+    private var recreatePending = false
+    private val rendererRestarts = ArrayDeque<Long>()
     private var splash: View? = null
     private lateinit var rootLayout: FrameLayout
     private lateinit var rootBackground: RootBackground
@@ -108,8 +117,18 @@ class MainActivity : Activity() {
         webView.loadUrl(HOME_URL)
     }
 
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        if (recreatePending) {
+            recreatePending = false
+            recreate()
+        }
+    }
+
     override fun onPause() {
         super.onPause()
+        resumed = false
         CookieManager.getInstance().flush()
     }
 
@@ -217,13 +236,20 @@ class MainActivity : Activity() {
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
             return when (uri.scheme?.lowercase()) {
-                "https" -> {
-                    if (isZaloHost(uri.host) || !request.isForMainFrame) {
-                        false
-                    } else {
+                "https" -> when {
+                    !request.isForMainFrame -> false
+                    !isZaloHost(uri.host) -> {
                         openExternal(uri)
                         true
                     }
+                    // From the chat app, another Zalo page (group invite, profile link, file on the
+                    // CDN) would unload chat.zalo.me and lose its state; show it in the browser.
+                    // The login pages still load in-app.
+                    hostOf(view.url) == CHAT_HOST && uri.host != CHAT_HOST && uri.host != LOGIN_HOST -> {
+                        openExternal(uri)
+                        true
+                    }
+                    else -> false
                 }
                 "http" -> {
                     // Cleartext is blocked; upgrade Zalo links, hand everything else to the browser.
@@ -259,8 +285,20 @@ class MainActivity : Activity() {
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
-            // The renderer died (e.g. killed for memory); rebuild everything with a fresh WebView.
-            recreate()
+            // The renderer died (e.g. killed for memory); rebuild everything with a fresh WebView,
+            // but not while in the background and not in a crash loop.
+            (view.parent as? ViewGroup)?.removeView(view)
+            val now = System.currentTimeMillis()
+            while (rendererRestarts.isNotEmpty() && now - rendererRestarts.first() > RENDERER_RESTART_WINDOW_MS) {
+                rendererRestarts.removeFirst()
+            }
+            if (rendererRestarts.size >= MAX_RENDERER_RESTARTS) {
+                toast("Zalo Web gặp lỗi liên tục, hãy mở lại app")
+                finish()
+                return true
+            }
+            rendererRestarts.addLast(now)
+            if (resumed) recreate() else recreatePending = true
             return true
         }
     }
@@ -309,7 +347,7 @@ class MainActivity : Activity() {
         }
 
         override fun onPermissionRequestCanceled(request: PermissionRequest) {
-            if (pendingPermission == request) pendingPermission = null
+            runOnUiThread { pendingPermissions.remove(request) }
         }
 
         // Avoids the grey "play" placeholder Chromium draws before a <video> has a frame.
@@ -352,21 +390,48 @@ class MainActivity : Activity() {
             request.deny()
             return
         }
-        val wanted = request.resources.filter { androidPermissionFor(it) != null }
-        if (wanted.isEmpty()) {
+        if (request.resources.none { androidPermissionFor(it) != null }) {
             request.deny()
             return
         }
-        val missing = wanted
+        if (missingPermissions(request).isEmpty()) {
+            settlePermission(request)
+            return
+        }
+        pendingPermissions += request
+        askPendingPermissions()
+    }
+
+    private fun missingPermissions(request: PermissionRequest): List<String> =
+        request.resources
             .mapNotNull { androidPermissionFor(it) }
             .filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
             .distinct()
+
+    /** Grants whatever the user has allowed so far; denies the request if that is nothing. */
+    private fun settlePermission(request: PermissionRequest): Boolean {
+        val granted = request.resources.filter { resource ->
+            val perm = androidPermissionFor(resource)
+            perm != null && checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+        }
+        return if (granted.isEmpty()) {
+            request.deny()
+            false
+        } else {
+            request.grant(granted.toTypedArray())
+            true
+        }
+    }
+
+    private fun askPendingPermissions() {
+        if (permissionDialogOpen) return
+        val missing = pendingPermissions.flatMap { missingPermissions(it) }.distinct()
         if (missing.isEmpty()) {
-            request.grant(wanted.toTypedArray())
+            pendingPermissions.toList().forEach { settlePermission(it) }
+            pendingPermissions.clear()
             return
         }
-        pendingPermission?.deny()
-        pendingPermission = request
+        permissionDialogOpen = true
         requestPermissions(missing.toTypedArray(), REQ_MEDIA_PERMISSIONS)
     }
 
@@ -376,18 +441,21 @@ class MainActivity : Activity() {
         grantResults: IntArray
     ) {
         if (requestCode != REQ_MEDIA_PERMISSIONS) return
-        val request = pendingPermission ?: return
-        pendingPermission = null
-        val granted = request.resources.filter { resource ->
-            val perm = androidPermissionFor(resource)
-            perm != null && checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED
+        permissionDialogOpen = false
+        val asked = permissions.toSet()
+        val waiting = pendingPermissions.toList()
+        pendingPermissions.clear()
+        var anyDenied = false
+        for (request in waiting) {
+            // Needs a permission that was not in this dialog (it arrived while it was open): ask again.
+            if (asked.isNotEmpty() && missingPermissions(request).any { it !in asked }) {
+                pendingPermissions += request
+            } else if (!settlePermission(request)) {
+                anyDenied = true
+            }
         }
-        if (granted.isEmpty()) {
-            request.deny()
-            toast("Cần quyền camera/micro để gọi")
-        } else {
-            request.grant(granted.toTypedArray())
-        }
+        if (anyDenied) toast("Cần quyền camera/micro để gọi")
+        if (pendingPermissions.isNotEmpty()) askPendingPermissions()
     }
 
     // ---------------------------------------------------------------- Back / insets
@@ -401,13 +469,24 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Popup -> info panel -> open chat are closed inside Zalo (inject.js); then history; then background. */
+    /**
+     * Popup -> search -> info panel -> open chat are closed inside Zalo (inject.js). On the chat
+     * app and the login page Back sends the app to the background (their history only holds the
+     * chat <-> login redirects, so going back would just reload); on other pages it goes back first.
+     */
     private fun handleBack() {
         webView.evaluateJavascript("window.__zwBack ? window.__zwBack() : false") { handled ->
             if (handled == "true") return@evaluateJavascript
-            if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+            val host = hostOf(webView.url)
+            if (host != CHAT_HOST && host != LOGIN_HOST && webView.canGoBack()) {
+                webView.goBack()
+            } else {
+                moveTaskToBack(true)
+            }
         }
     }
+
+    private fun hostOf(url: String?): String? = url?.let { Uri.parse(it).host?.lowercase() }
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {

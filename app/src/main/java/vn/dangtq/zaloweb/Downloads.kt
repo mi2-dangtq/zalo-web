@@ -14,14 +14,16 @@ import android.webkit.MimeTypeMap
 import android.webkit.URLUtil
 import org.json.JSONObject
 import java.io.IOException
+import java.io.OutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /**
  * http(s) downloads go through DownloadManager with the WebView's cookies and UA.
- * blob:/data: downloads are read in JS (see inject.js) and handed to [Bridge.saveBase64],
- * which writes them to Download/ through MediaStore — no storage permission needed.
+ * blob:/data: downloads are read in JS (see inject.js) and streamed through [Bridge] into
+ * Download/ via MediaStore — no storage permission needed.
  */
 class Downloads(private val activity: MainActivity) : DownloadListener {
 
@@ -69,18 +71,94 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
         }
     }
 
+    /** A Download/ entry being written in chunks from JS; IS_PENDING until [Bridge.finishSave]. */
+    private class PendingSave(val uri: Uri, val out: OutputStream)
+
+    // Bridge calls all arrive on the single JavaBridge thread, so no locking is needed.
+    private val saves = HashMap<String, PendingSave>()
+
     inner class Bridge {
-        /** Called from inject.js on the JavaBridge thread; [data] is plain base64 or a data: URL. */
+        /** Small payloads (data: URLs): [data] is plain base64 or a data: URL. */
         @JavascriptInterface
         fun saveBase64(data: String, fileName: String?, mime: String?) {
-            try {
-                val payload = if (data.startsWith("data:")) data.substringAfter(',') else data
-                val bytes = Base64.decode(payload, Base64.DEFAULT)
-                val saved = writeToDownloads(bytes, fileName, mime)
-                activity.toast("Đã lưu vào Download: $saved")
-            } catch (e: Exception) {
-                activity.toast("Lưu file thất bại: ${e.message}")
+            val id = beginSave(fileName, mime)
+            if (id.isEmpty()) return
+            val payload = if (data.startsWith("data:")) data.substringAfter(',') else data
+            if (appendSave(id, payload)) finishSave(id)
+        }
+
+        /**
+         * Blobs are streamed in base64 chunks (begin → append… → finish) so a large file never
+         * has to exist as one giant string or byte array. Returns "" when the file can't be created.
+         */
+        @JavascriptInterface
+        fun beginSave(fileName: String?, mime: String?): String {
+            return try {
+                val name = buildFileName(fileName, mime)
+                val resolver = activity.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, resolveMime(name, mime))
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                    ?: throw IOException("MediaStore từ chối tạo file")
+                val out = try {
+                    resolver.openOutputStream(uri) ?: throw IOException("Không mở được file để ghi")
+                } catch (t: Throwable) {
+                    resolver.delete(uri, null, null)
+                    throw t
+                }
+                val id = UUID.randomUUID().toString()
+                saves[id] = PendingSave(uri, out)
+                id
+            } catch (t: Throwable) {
+                activity.toast("Lưu file thất bại: ${t.message}")
+                ""
             }
+        }
+
+        @JavascriptInterface
+        fun appendSave(id: String, base64: String): Boolean {
+            val save = saves[id] ?: return false
+            return try {
+                save.out.write(Base64.decode(base64, Base64.DEFAULT))
+                true
+            } catch (t: Throwable) {
+                abortSave(id)
+                activity.toast("Lưu file thất bại: ${t.message}")
+                false
+            }
+        }
+
+        @JavascriptInterface
+        fun finishSave(id: String) {
+            val save = saves.remove(id) ?: return
+            try {
+                save.out.close()
+                val resolver = activity.contentResolver
+                resolver.update(
+                    save.uri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null
+                )
+                activity.toast("Đã lưu vào Download: ${savedName(save.uri) ?: "file"}")
+            } catch (t: Throwable) {
+                activity.contentResolver.delete(save.uri, null, null)
+                activity.toast("Lưu file thất bại: ${t.message}")
+            }
+        }
+
+        @JavascriptInterface
+        fun abortSave(id: String) {
+            val save = saves.remove(id) ?: return
+            try {
+                save.out.close()
+            } catch (ignored: Throwable) {
+            }
+            activity.contentResolver.delete(save.uri, null, null)
         }
 
         @JavascriptInterface
@@ -95,30 +173,11 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
         }
     }
 
-    private fun writeToDownloads(bytes: ByteArray, fileName: String?, mime: String?): String {
-        val name = buildFileName(fileName, mime)
-        val type = resolveMime(name, mime)
-        val resolver = activity.contentResolver
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-            put(MediaStore.MediaColumns.MIME_TYPE, type)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            ?: throw IOException("MediaStore từ chối tạo file")
-        try {
-            val out = resolver.openOutputStream(uri) ?: throw IOException("Không mở được file để ghi")
-            out.use { it.write(bytes) }
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            resolver.update(uri, values, null, null)
-        } catch (e: Exception) {
-            resolver.delete(uri, null, null)
-            throw e
-        }
-        return name
-    }
+    /** MediaStore renames duplicates ("x (1).jpg"), so read back the name it actually used. */
+    private fun savedName(uri: Uri): String? =
+        activity.contentResolver
+            .query(uri, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
 
     private fun normalizeMime(mime: String?): String? =
         mime?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }

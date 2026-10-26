@@ -53,6 +53,9 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
     companion object {
         private const val IDLE_ALPHA = 0.35f
         private const val ACTIVE_ALPHA = 0.85f
+        private const val DEFAULT_FAB_Y = 0.4f
+        private const val TOP_GUARD_DP = 64
+        private const val BOTTOM_GUARD_DP = 72
         private val WIDTHS = intArrayOf(0, 480, 600, 800, 1000, 1200)
         private val ZOOMS = intArrayOf(80, 90, 100, 110, 125, 150)
         private val DIALOG_THEME = android.R.style.Theme_Material_Light_Dialog_Alert
@@ -85,14 +88,25 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
 
     // ---------------------------------------------------------------- Floating button
 
+    // Keep the button off the header (top) and off the composer / tab bar / Send button (bottom),
+    // which also shrink into the keyboard's padding.
+    private fun minY() = dp(TOP_GUARD_DP).toFloat()
     private fun maxX() = (root.width - root.paddingLeft - root.paddingRight - fab.width).coerceAtLeast(0).toFloat()
-    private fun maxY() = (root.height - root.paddingTop - root.paddingBottom - fab.height).coerceAtLeast(0).toFloat()
+    private fun maxY() = (root.height - root.paddingTop - root.paddingBottom - fab.height - dp(BOTTOM_GUARD_DP))
+        .toFloat().coerceAtLeast(minY())
+
+    private fun yForFraction(f: Float) = minY() + f.coerceIn(0f, 1f) * (maxY() - minY())
+
+    private fun fractionForY(y: Float): Float {
+        val range = maxY() - minY()
+        return if (range > 0f) ((y - minY()) / range).coerceIn(0f, 1f) else DEFAULT_FAB_Y
+    }
 
     private fun placeFab() {
         val fx = prefs.fabX.takeIf { it >= 0f } ?: 1f
-        val fy = prefs.fabY.takeIf { it >= 0f } ?: 0.4f
+        val fy = prefs.fabY.takeIf { it >= 0f } ?: DEFAULT_FAB_Y
         fab.translationX = fx.coerceIn(0f, 1f) * maxX()
-        fab.translationY = fy.coerceIn(0f, 1f) * maxY()
+        fab.translationY = yForFraction(fy)
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -121,7 +135,7 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
                     if (!dragging && hypot(dx, dy) > slop) dragging = true
                     if (dragging) {
                         v.translationX = (startX + dx).coerceIn(0f, maxX())
-                        v.translationY = (startY + dy).coerceIn(0f, maxY())
+                        v.translationY = (startY + dy).coerceIn(minY(), maxY())
                     }
                     true
                 }
@@ -129,9 +143,8 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
                     v.alpha = IDLE_ALPHA
                     if (dragging) {
                         val mx = maxX()
-                        val my = maxY()
                         prefs.fabX = if (mx > 0f) v.translationX / mx else 1f
-                        prefs.fabY = if (my > 0f) v.translationY / my else 0.4f
+                        prefs.fabY = fractionForY(v.translationY)
                     } else {
                         v.performClick()
                     }

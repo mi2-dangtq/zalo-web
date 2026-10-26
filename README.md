@@ -70,8 +70,8 @@ Workflow lấy keystore từ 3 secret sau (Settings → Secrets and variables �
 | `KS_PASS`         | Mật khẩu keystore                          |
 | `KEY_PASS`        | Mật khẩu key (PKCS12 thì giống `KS_PASS`)  |
 
-Alias của key là `zaloweb`. Thiếu secret thì workflow vẫn build nhưng ký bằng debug key
-(không cài đè được bản đã ký thật).
+Alias của key là `zaloweb`. Thiếu secret thì workflow dừng với lỗi thay vì phát hành một APK
+ký bằng debug key (bản đó không cài đè được lên app đang dùng).
 
 ### Tự tạo keystore và thêm secret
 

@@ -113,27 +113,37 @@
   // ---------------------------------------------------------------- Back button (MainActivity.handleBack)
 
   // Zalo opens chats/panels without touching history, so Back must close them by hand:
-  // popup/modal/viewer (Escape) -> conversation info panel -> conversation -> let Android decide.
-  var backTries = new WeakMap();
+  // popup/modal/viewer (Escape, then its close button) -> chat-list search -> conversation info
+  // panel -> conversation -> let Android decide.
   // Closing a chat animates for ~0.9s with the back button still mounted; swallow repeats meanwhile.
   var CHAT_CLOSE_MS = 1500;
-  var lastChatClose = 0;
+  var MIN_OVERLAY_PX = 8;
+  // Kept on window so a re-injection in the middle of a Back sequence doesn't reset it.
+  var backState = window.__zwBackState || (window.__zwBackState = {
+    overlay: null, presses: 0, lastChatClose: 0, stuck: new WeakSet()
+  });
 
-  function isShown(el) {
+  function isShown(el, minSize) {
     if (!el) return false;
+    var min = minSize || 1;
     var r = el.getBoundingClientRect();
-    if (r.width < 1 || r.height < 1) return false;
+    if (r.width < min || r.height < min) return false;
     var cs = getComputedStyle(el);
     return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
   }
 
-  // Zalo renders popovers, modals and the media viewer as direct children of <body>.
+  // Zalo renders popovers, modals and the media viewer as direct children of <body>. Tiny or
+  // click-through nodes (toasts, tooltips) and ones that already ignored two Backs don't count.
+  function isOverlay(el) {
+    if (el.id === 'app' || /^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE|IFRAME)$/.test(el.tagName)) return false;
+    if (backState.stuck.has(el) || !isShown(el, MIN_OVERLAY_PX)) return false;
+    return getComputedStyle(el).pointerEvents !== 'none';
+  }
+
   function topOverlay() {
     var kids = document.body ? document.body.children : [];
     for (var i = kids.length - 1; i >= 0; i--) {
-      var el = kids[i];
-      if (el.id === 'app' || /^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(el.tagName)) continue;
-      if (isShown(el)) return el;
+      if (isOverlay(kids[i])) return kids[i];
     }
     return null;
   }
@@ -149,16 +159,32 @@
 
   // Returns true when something inside Zalo was closed.
   window.__zwBack = function () {
-    var overlay = topOverlay();
-    if (overlay) {
-      var tries = backTries.get(overlay) || 0;
-      if (tries < 2) {
-        backTries.set(overlay, tries + 1);
-        var close = tries > 0 && overlay.querySelector('.modal-header-icon, [class*="close"]');
+    var overlay;
+    while ((overlay = topOverlay())) {
+      if (overlay !== backState.overlay) {
+        backState.overlay = overlay;
+        backState.presses = 0;
+      }
+      if (backState.presses < 2) {
+        backState.presses++;
+        var close = backState.presses > 1 && overlay.querySelector('.modal-header-icon, [class*="close"]');
         if (close) close.click(); else pressEscape();
         return true;
       }
-      // Ignores both Escape and its close button (e.g. a toast): fall through.
+      // Ignored both Escape and its close button: skip it and look underneath.
+      backState.stuck.add(overlay);
+      backState.overlay = null;
+    }
+    backState.overlay = null;
+
+    // Chat-list search mode swaps the header icons for a text "Đóng" button.
+    var searchClose = document.querySelector('#contact-search .z--btn--v2:not(.icon-only)');
+    if (isShown(searchClose)) {
+      // Blur first: Zalo ignores "Đóng" while the search box still has focus, and a focused
+      // box would also keep the keyboard up.
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      searchClose.click();
+      return true;
     }
     var infoToggle = document.querySelector('#header .fa-outline-right-bar-active');
     if (isShown(infoToggle)) {
@@ -168,8 +194,8 @@
     var convBack = document.querySelector('.conv-back-btn');
     if (isShown(convBack)) {
       var now = Date.now();
-      if (now - lastChatClose > CHAT_CLOSE_MS) {
-        lastChatClose = now;
+      if (now - backState.lastChatClose > CHAT_CLOSE_MS) {
+        backState.lastChatClose = now;
         convBack.click();
       }
       return true;
@@ -185,14 +211,18 @@
   // ---------------------------------------------------------------- No surprise keyboard
 
   // Zalo focuses the message box whenever a chat opens; on a phone that pops the keyboard.
-  // Only allow focusing a text field the user just touched (or touched right next to: Zalo's
-  // editor only turns contenteditable on while focused), or re-focusing one that was focused
-  // a moment ago (e.g. Zalo restoring focus after Send).
+  // Only allow focusing a text field when:
+  //  - the user just touched it or right next to it (Zalo's editor only turns contenteditable on
+  //    while focused, so the touch lands on a child or sibling),
+  //  - it is the same field that lost focus a moment ago (Zalo restoring focus after Send), or
+  //  - the browser is giving focus back to it after the app/window was away (dialogs, app switch).
   var FOCUS_GRACE_MS = 1000;
   var NEAR_LEVELS = 4;
   var lastDown = null;
   var lastDownAt = 0;
-  var lastEditableFocus = 0;
+  var lastField = null;
+  var lastFieldBlurAt = 0;
+  var awayElement = null;
   var blocking = false;
 
   function touchedNear(field) {
@@ -212,44 +242,78 @@
     return el.closest ? el.closest('[contenteditable=""], [contenteditable="true"]') : null;
   }
 
+  // The focused element is kept while the window is away; it gets focus back on return.
+  window.addEventListener('blur', function () {
+    awayElement = document.activeElement !== document.body ? document.activeElement : null;
+  });
+
   document.addEventListener('pointerdown', function (ev) {
     lastDown = ev.target;
     lastDownAt = Date.now();
+    awayElement = null;
   }, true);
 
   document.addEventListener('focusin', function (ev) {
     var field = editableOf(ev.target);
     if (!field) return;
-    var now = Date.now();
-    if (touchedNear(field) || now - lastEditableFocus < FOCUS_GRACE_MS) {
-      lastEditableFocus = now;
+    var returning = !!awayElement && (awayElement === ev.target || awayElement.contains(field) ||
+      field.contains(awayElement));
+    awayElement = null;
+    if (returning || touchedNear(field) ||
+        (field === lastField && Date.now() - lastFieldBlurAt < FOCUS_GRACE_MS)) {
       return;
     }
-    blocking = true; // our own blur must not count as "was focused a moment ago"
+    // Stop the event before Zalo's own focus handlers run, so its state stays "not focused".
+    ev.stopImmediatePropagation();
+    blocking = true; // our own blur must not count as "lost focus a moment ago"
     field.blur();
     blocking = false;
   }, true);
 
   document.addEventListener('focusout', function (ev) {
-    if (!blocking && editableOf(ev.target)) lastEditableFocus = Date.now();
+    if (blocking) return;
+    var field = editableOf(ev.target);
+    if (field) {
+      lastField = field;
+      lastFieldBlurAt = Date.now();
+    }
   }, true);
 
   // ---------------------------------------------------------------- Downloads
 
+  // Zalo revokes blob URLs right after clicking, so keep the original Blob around ourselves,
+  // bounded by count and total size, and dropped a while after Zalo revokes it.
   var MAX_BLOBS = 40;
-  // Zalo revokes blob URLs right after clicking, so keep the original Blob around ourselves.
+  var MAX_BLOB_BYTES = 64 * 1024 * 1024;
+  var REVOKED_KEEP_MS = 30000;
   var blobs = new Map();
+  var blobBytes = 0;
+
+  function forgetBlob(url) {
+    var b = blobs.get(url);
+    if (!b) return;
+    blobBytes -= b.size;
+    blobs.delete(url);
+  }
 
   var origCreateObjectURL = URL.createObjectURL;
   URL.createObjectURL = function (obj) {
     var url = origCreateObjectURL.apply(this, arguments);
     try {
-      if (obj instanceof Blob) {
+      if (obj instanceof Blob && obj.size <= MAX_BLOB_BYTES) {
+        forgetBlob(url);
         blobs.set(url, obj);
-        while (blobs.size > MAX_BLOBS) blobs.delete(blobs.keys().next().value);
+        blobBytes += obj.size;
+        while (blobs.size > MAX_BLOBS || blobBytes > MAX_BLOB_BYTES) forgetBlob(blobs.keys().next().value);
       }
     } catch (e) { /* never break the page */ }
     return url;
+  };
+
+  var origRevokeObjectURL = URL.revokeObjectURL;
+  URL.revokeObjectURL = function (url) {
+    setTimeout(forgetBlob, REVOKED_KEEP_MS, url);
+    return origRevokeObjectURL.apply(this, arguments);
   };
 
   function report(msg) {
@@ -268,10 +332,29 @@
     });
   }
 
+  // Stream the file to Android in chunks so a large video never becomes one giant string.
+  var CHUNK_BYTES = 768 * 1024;
+
   function saveBlob(blob, name, mime) {
     var fileName = name || (typeof File !== 'undefined' && blob instanceof File ? blob.name : '');
-    return blobToBase64(blob).then(function (b64) {
-      bridge.saveBase64(b64, fileName || '', mime || blob.type || '');
+    var id = bridge.beginSave(fileName || '', mime || blob.type || '');
+    if (!id) return Promise.resolve(); // Android already reported why
+    var offset = 0;
+    function next() {
+      if (offset >= blob.size) {
+        bridge.finishSave(id);
+        return undefined;
+      }
+      var part = blob.slice(offset, offset + CHUNK_BYTES);
+      offset += CHUNK_BYTES;
+      return blobToBase64(part).then(function (b64) {
+        if (!bridge.appendSave(id, b64)) return undefined; // aborted and reported by Android
+        return next();
+      });
+    }
+    return Promise.resolve().then(next).catch(function (e) {
+      bridge.abortSave(id);
+      throw e;
     });
   }
 

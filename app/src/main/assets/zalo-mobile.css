@@ -33,7 +33,8 @@
   box-sizing: border-box;
 }
 
-#container > .page-container {
+/* Only while the bottom bar is actually showing (compact mode, nothing opened over it). */
+#container:has(#sidebarNav.compact-mode):not(:has(.conv-back-btn)) > .page-container {
   padding-bottom: 56px;
   box-sizing: border-box;
 }
@@ -51,8 +52,8 @@
   flex-direction: row !important;
   justify-content: space-around !important;
   align-items: stretch !important;
-  background: #fff !important;
-  border-top: 0.5px solid #e1e4e8;
+  background: var(--layer-background, #fff) !important;
+  border-top: 0.5px solid var(--border, #e1e4e8);
 }
 
 /* Flatten the rail's wrapper groups so every tab is a direct flex item. */
@@ -74,8 +75,9 @@
   width: auto !important;
   height: 56px !important;
   padding: 4px 0 0 !important;
+  box-sizing: border-box !important;
   justify-content: flex-start !important;
-  color: #7a7f86 !important;
+  color: var(--text-secondary, #7a7f86) !important;
 }
 
 #sidebarNav.compact-mode #main-tab .leftbar-tab .mmi-icon-wr {
@@ -85,7 +87,7 @@
 }
 
 #sidebarNav.compact-mode #main-tab .leftbar-tab i {
-  color: #7a7f86 !important;
+  color: var(--text-secondary, #7a7f86) !important;
   font-size: 24px !important;
 }
 
@@ -139,13 +141,17 @@
   color: rgba(255, 255, 255, 0.8) !important;
 }
 
-#sidebarNav.compact-mode #contact-search i {
+/* Icons, plus the "Đóng" text button that replaces them while searching. */
+#sidebarNav.compact-mode #contact-search i,
+#sidebarNav.compact-mode #contact-search .z--btn--v2,
+#sidebarNav.compact-mode #contact-search .z--btn--v2 * {
   color: #fff !important;
 }
 
-/* Open conversation and contact sub-pages. */
+/* Open conversation, contact sub-pages and the conversation info panel. */
 #chatViewContainer #header,
-#container .head__page__contact__tab {
+#container .head__page__contact__tab,
+aside.compact-chat-info .chat-info__header {
   height: 56px !important;
   min-height: 56px !important;
   border: 0 !important;
@@ -155,14 +161,17 @@
 #chatViewContainer #header,
 #chatViewContainer #header *,
 #container .head__page__contact__tab,
-#container .head__page__contact__tab * {
+#container .head__page__contact__tab *,
+aside.compact-chat-info .chat-info__header,
+aside.compact-chat-info .chat-info__header * {
   color: #fff !important;
 }
 
 #sidebarNav.compact-mode #contact-search .z--btn--v2:hover,
 #chatViewContainer #header .z--btn--v2:hover,
 #chatViewContainer #header .z--btn--v2.focused,
-#container .head__page__contact__tab .z--btn--v2:hover {
+#container .head__page__contact__tab .z--btn--v2:hover,
+aside.compact-chat-info .chat-info__header .z--btn--v2:hover {
   background: rgba(255, 255, 255, 0.15) !important;
 }
 
@@ -174,8 +183,8 @@
   flex-direction: row !important;
   flex-wrap: wrap !important;
   align-items: center !important;
-  border-top: 0.5px solid #e1e4e8;
-  background: #fff;
+  border-top: 0.5px solid var(--border, #e1e4e8);
+  background: var(--layer-background, #fff);
 }
 
 #chat-box-input-container-id > #chatInput {
@@ -218,7 +227,7 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  color: #5f6670;
+  color: var(--text-secondary, #5f6670);
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -234,7 +243,7 @@ html.zw-tools-open #chat-box-input-container-id > #chat-box-bar-id {
   flex: 1 1 100% !important;
   height: auto !important;
   padding: 4px 8px !important;
-  border-bottom: 0.5px solid #eef0f2 !important;
+  border-bottom: 0.5px solid var(--border, #eef0f2) !important;
 }
 
 html.zw-tools-open #chat-box-bar-id .left-chat-box-bar {

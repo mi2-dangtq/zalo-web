@@ -28,13 +28,15 @@ jobs:
       - name: Decode keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        # Without the fixed keystore every runner signs with its own throwaway debug key, and no
+        # such build can be installed over another one, so stop instead of publishing it.
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-            echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
-          else
-            echo "::warning::KEYSTORE_BASE64 secret is missing - the APK will be signed with a throwaway debug key and cannot update a release-signed install."
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is missing - add it (see README) so the APK can update the installed app."
+            exit 1
           fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       - name: Build release APK
         env:
@@ -50,6 +52,8 @@ jobs:
           name: ZaloWeb-${{ env.VERSION }}
           path: ZaloWeb-${{ env.VERSION }}.apk
           if-no-files-found: error
+          # A re-run keeps the run number, so the artifact name repeats.
+          overwrite: true
 
       - name: Publish GitHub Release
         env:
