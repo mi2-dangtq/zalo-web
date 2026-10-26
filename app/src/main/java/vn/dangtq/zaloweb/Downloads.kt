@@ -87,6 +87,12 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
         fun toast(message: String) {
             activity.toast(message)
         }
+
+        /** inject.js calls this once Zalo's UI (or the login page) has rendered. */
+        @JavascriptInterface
+        fun ready() {
+            activity.runOnUiThread { activity.hideSplash() }
+        }
     }
 
     private fun writeToDownloads(bytes: ByteArray, fileName: String?, mime: String?): String {

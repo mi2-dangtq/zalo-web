@@ -22,6 +22,11 @@ Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
 - Gửi ảnh/file (chọn nhiều file), tải file về thư mục **Download**
   (kể cả file `blob:`/`data:` mà Zalo Web tạo rồi thu hồi ngay).
 - Gọi thoại/video: xin quyền camera/micro khi Zalo yêu cầu (chỉ cấp cho domain Zalo).
+- Nút Back như app: đóng popup/hộp thoại/trình xem ảnh → đóng khung thông tin → đóng cuộc
+  chat → về màn hình chính (Zalo Web không ghi lịch sử khi mở chat nên phải tự xử lý).
+- Mở app mượt: màn chờ có icon cho tới khi Zalo vẽ xong giao diện; không có hiệu ứng kéo quá
+  đà ở cuối danh sách; giữ tay không bôi đen chữ/hiện thanh Sao chép (giữ tay lên tin nhắn
+  vẫn mở menu tin nhắn của Zalo; ô nhập tin vẫn chọn chữ được).
 - Link ngoài Zalo mở bằng trình duyệt; domain giữ lại trong app:
   `*.zalo.me`, `*.zaloapp.com`, `*.zadn.vn`, `*.zdn.vn`, `*.zalo.vn`.
 - Nút nổi (kéo được) mở menu: tải lại, giao diện điện thoại, độ rộng hiển thị, cỡ chữ,

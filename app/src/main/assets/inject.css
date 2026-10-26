@@ -8,6 +8,29 @@ html {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* App feel: no bounce/glow or scroll chaining at the ends of lists. */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+/* App feel: long-press must not select UI text or pop the Copy/Share toolbar.
+   Long-press still fires contextmenu, which opens the page's own menus. */
+html {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+[contenteditable],
+[contenteditable] * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 ::-webkit-scrollbar {
   width: 4px;
   height: 4px;

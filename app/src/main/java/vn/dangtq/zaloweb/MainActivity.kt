@@ -6,10 +6,12 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
@@ -19,12 +21,16 @@ import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.Toast
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
@@ -58,6 +64,7 @@ class MainActivity : Activity() {
     private var fileCallback: ValueCallback<Array<Uri>>? = null
     private var pendingPermission: PermissionRequest? = null
     private var clearHistoryOnLoad = false
+    private var splash: View? = null
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -83,6 +90,7 @@ class MainActivity : Activity() {
         downloads = Downloads(this)
         configureWebView()
         SettingsUi(this, root).attach()
+        showSplash(root)
         setupBackNavigation()
 
         webView.loadUrl(HOME_URL)
@@ -125,6 +133,11 @@ class MainActivity : Activity() {
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
         cookies.setAcceptThirdPartyCookies(webView, true)
+
+        // No edge glow/stretch: scrolling should stop dead like a native list.
+        webView.overScrollMode = View.OVER_SCROLL_NEVER
+        // Keep the renderer from being killed first under memory pressure while visible.
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
 
         webView.addJavascriptInterface(downloads.bridge, "AndroidBridge")
         webView.setDownloadListener(downloads)
@@ -205,6 +218,11 @@ class MainActivity : Activity() {
             }
             injectAll()
             CookieManager.getInstance().flush()
+        }
+
+        override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            // Show WebView's error page instead of a splash that never goes away.
+            if (request.isForMainFrame) hideSplash()
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -350,8 +368,12 @@ class MainActivity : Activity() {
         }
     }
 
+    /** Popup -> info panel -> open chat are closed inside Zalo (inject.js); then history; then background. */
     private fun handleBack() {
-        if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+        webView.evaluateJavascript("window.__zwBack ? window.__zwBack() : false") { handled ->
+            if (handled == "true") return@evaluateJavascript
+            if (webView.canGoBack()) webView.goBack() else moveTaskToBack(true)
+        }
     }
 
     @Deprecated("Deprecated in Java")
@@ -389,6 +411,44 @@ class MainActivity : Activity() {
             }
         }
         root.requestApplyInsets()
+    }
+
+    // ---------------------------------------------------------------- Splash
+
+    /** Covers the WebView (and Zalo's own loading screen) until inject.js reports the UI is ready. */
+    private fun showSplash(root: FrameLayout) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+
+        val icon = ImageView(this).apply { setImageResource(R.mipmap.ic_launcher) }
+        val progress = ProgressBar(this).apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(getColor(R.color.brand))
+        }
+        val view = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(getColor(R.color.background))
+            isClickable = true
+            addView(icon, LinearLayout.LayoutParams(dp(96), dp(96)))
+            addView(progress, LinearLayout.LayoutParams(dp(28), dp(28)).apply { topMargin = dp(40) })
+        }
+        root.addView(
+            view,
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+        )
+        splash = view
+        root.postDelayed({ hideSplash() }, 15_000)
+    }
+
+    fun hideSplash() {
+        val view = splash ?: return
+        splash = null
+        view.animate()
+            .alpha(0f)
+            .setDuration(200)
+            .withEndAction { (view.parent as? ViewGroup)?.removeView(view) }
+            .start()
     }
 
     // ---------------------------------------------------------------- Helpers

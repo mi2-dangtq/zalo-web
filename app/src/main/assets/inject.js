@@ -5,6 +5,7 @@
   'use strict';
   var cfg = window.__zwConfig || {};
   var head = document.head || document.documentElement;
+  var bridge = window.AndroidBridge;
 
   // ---------------------------------------------------------------- Styles
 
@@ -50,12 +51,94 @@
     }
   }
 
+  // ---------------------------------------------------------------- Splash (MainActivity.hideSplash)
+
+  // Keep the native splash up until Zalo has rendered its UI (or we are on the login page).
+  if (!window.__zwReadySent) {
+    var readyTries = 0;
+    (function waitForApp() {
+      var ready = location.hostname !== 'chat.zalo.me' || document.querySelector('#container, #sidebarNav');
+      if (ready || ++readyTries > 150) {
+        window.__zwReadySent = true;
+        try { bridge.ready(); } catch (e) { /* not running inside the app */ }
+        return;
+      }
+      setTimeout(waitForApp, 100);
+    })();
+  }
+
+  // ---------------------------------------------------------------- Back button (MainActivity.handleBack)
+
+  // Zalo opens chats/panels without touching history, so Back must close them by hand:
+  // popup/modal/viewer (Escape) -> conversation info panel -> conversation -> let Android decide.
+  var backTries = new WeakMap();
+  // Closing a chat animates for ~0.9s with the back button still mounted; swallow repeats meanwhile.
+  var CHAT_CLOSE_MS = 1500;
+  var lastChatClose = 0;
+
+  function isShown(el) {
+    if (!el) return false;
+    var r = el.getBoundingClientRect();
+    if (r.width < 1 || r.height < 1) return false;
+    var cs = getComputedStyle(el);
+    return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.opacity !== '0';
+  }
+
+  // Zalo renders popovers, modals and the media viewer as direct children of <body>.
+  function topOverlay() {
+    var kids = document.body ? document.body.children : [];
+    for (var i = kids.length - 1; i >= 0; i--) {
+      var el = kids[i];
+      if (el.id === 'app' || /^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE)$/.test(el.tagName)) continue;
+      if (isShown(el)) return el;
+    }
+    return null;
+  }
+
+  function pressEscape() {
+    var target = document.activeElement || document.body;
+    ['keydown', 'keyup'].forEach(function (type) {
+      target.dispatchEvent(new KeyboardEvent(type, {
+        key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true
+      }));
+    });
+  }
+
+  // Returns true when something inside Zalo was closed.
+  window.__zwBack = function () {
+    var overlay = topOverlay();
+    if (overlay) {
+      var tries = backTries.get(overlay) || 0;
+      if (tries < 2) {
+        backTries.set(overlay, tries + 1);
+        var close = tries > 0 && overlay.querySelector('.modal-header-icon, [class*="close"]');
+        if (close) close.click(); else pressEscape();
+        return true;
+      }
+      // Ignores both Escape and its close button (e.g. a toast): fall through.
+    }
+    var infoToggle = document.querySelector('#header .fa-outline-right-bar-active');
+    if (isShown(infoToggle)) {
+      (infoToggle.closest('.z--btn--v2') || infoToggle).click();
+      return true;
+    }
+    var convBack = document.querySelector('.conv-back-btn');
+    if (isShown(convBack)) {
+      var now = Date.now();
+      if (now - lastChatClose > CHAT_CLOSE_MS) {
+        lastChatClose = now;
+        convBack.click();
+      }
+      return true;
+    }
+    return false;
+  };
+
   // ---------------------------------------------------------------- Download hooks (once per page)
 
   if (window.__zwHooked) return;
   window.__zwHooked = true;
 
-  var bridge = window.AndroidBridge;
   var MAX_BLOBS = 40;
   // Zalo revokes blob URLs right after clicking, so keep the original Blob around ourselves.
   var blobs = new Map();
