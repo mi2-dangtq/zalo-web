@@ -2,4 +2,6 @@
 <resources>
     <color name="brand">#0F766E</color>
     <color name="background">#FFFFFF</color>
+    <!-- Status bar band behind the phone skin's blue headers (zalo-mobile.css). -->
+    <color name="skin_header">#0068FF</color>
 </resources>

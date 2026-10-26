@@ -8,6 +8,12 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +21,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.WindowInsetsController
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
 import android.webkit.PermissionRequest
@@ -65,6 +72,8 @@ class MainActivity : Activity() {
     private var pendingPermission: PermissionRequest? = null
     private var clearHistoryOnLoad = false
     private var splash: View? = null
+    private lateinit var rootLayout: FrameLayout
+    private lateinit var rootBackground: RootBackground
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -78,7 +87,9 @@ class MainActivity : Activity() {
         WebView.setWebContentsDebuggingEnabled(true)
 
         val root = FrameLayout(this)
-        root.setBackgroundColor(getColor(R.color.background))
+        rootLayout = root
+        rootBackground = RootBackground(getColor(R.color.background))
+        root.background = rootBackground
         webView = WebView(this)
         root.addView(
             webView,
@@ -86,6 +97,7 @@ class MainActivity : Activity() {
         )
         setContentView(root)
         setupEdgeToEdge(root)
+        applyStatusBarStyle()
 
         downloads = Downloads(this)
         configureWebView()
@@ -165,7 +177,28 @@ class MainActivity : Activity() {
 
     fun applySettings() {
         webView.settings.textZoom = prefs.textZoom
+        applyStatusBarStyle()
         injectAll()
+    }
+
+    /** The phone skin has blue headers: paint the status bar area blue too, with white icons. */
+    @Suppress("DEPRECATION")
+    private fun applyStatusBarStyle() {
+        val blue = prefs.mobileLayout
+        rootBackground.bandColor = if (blue) getColor(R.color.skin_header) else Color.TRANSPARENT
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.setSystemBarsAppearance(
+                if (blue) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+            )
+        } else {
+            val flags = rootLayout.systemUiVisibility
+            rootLayout.systemUiVisibility = if (blue) {
+                flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
+            } else {
+                flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            }
+        }
     }
 
     fun clearAllData() {
@@ -399,6 +432,7 @@ class MainActivity : Activity() {
                     WindowInsets.Type.systemBars() or WindowInsets.Type.ime() or WindowInsets.Type.displayCutout()
                 )
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+                rootBackground.bandHeight = bars.top
                 WindowInsets.CONSUMED
             } else {
                 v.setPadding(
@@ -407,6 +441,7 @@ class MainActivity : Activity() {
                     insets.systemWindowInsetRight,
                     insets.systemWindowInsetBottom
                 )
+                rootBackground.bandHeight = insets.systemWindowInsetTop
                 insets.consumeSystemWindowInsets()
             }
         }
@@ -484,4 +519,40 @@ class MainActivity : Activity() {
 
     private fun readAsset(name: String): String =
         assets.open(name).bufferedReader().use { it.readText() }
+}
+
+/** Window background: the page colour plus an optional band behind the status bar. */
+private class RootBackground(private val baseColor: Int) : Drawable() {
+    private val paint = Paint()
+
+    var bandHeight = 0
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidateSelf()
+            }
+        }
+
+    var bandColor = Color.TRANSPARENT
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidateSelf()
+            }
+        }
+
+    override fun draw(canvas: Canvas) {
+        canvas.drawColor(baseColor)
+        if (bandHeight > 0 && Color.alpha(bandColor) != 0) {
+            paint.color = bandColor
+            canvas.drawRect(0f, 0f, bounds.width().toFloat(), bandHeight.toFloat(), paint)
+        }
+    }
+
+    override fun setAlpha(alpha: Int) {}
+
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.OPAQUE
 }

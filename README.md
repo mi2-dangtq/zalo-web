@@ -41,10 +41,17 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
 - **Độ rộng hiển thị → Tự động** (mặc định): giữ viewport `width=device-width` của Zalo,
   trang hiển thị đúng tỉ lệ 1:1 như app điện thoại. Chọn 480/600/800… nếu muốn thu nhỏ để
   thấy nhiều nội dung hơn.
-- **Giao diện điện thoại** (mặc định bật) chèn `assets/zalo-mobile.css`: ẩn banner quảng cáo
-  "Sử dụng Zalo PC" và ẩn thanh icon bên trái khi đang mở một cuộc chat để khung chat rộng hết
-  màn hình. File này phụ thuộc tên class của Zalo; nếu Zalo cập nhật làm vỡ giao diện, tắt nó
-  trong menu.
+- **Giao diện điện thoại** (mặc định bật) chèn `assets/zalo-mobile.css` để trông như app Zalo
+  trên điện thoại:
+  - thanh icon dọc bên trái thành **thanh tab dưới** (Tin nhắn, Danh bạ, Tài liệu, Công cụ,
+    Cài đặt); tự ẩn khi đang mở cuộc chat;
+  - **header xanh** cho danh sách chat, khung chat và các trang Danh bạ; thanh trạng thái
+    Android cũng tô xanh (biểu tượng trắng);
+  - **khung soạn tin một hàng**: `⋯` · ảnh · ô nhập · biểu cảm · gửi. Bấm `⋯` để hiện lại đủ
+    9 công cụ (sticker, file, danh thiếp, định dạng…);
+  - ẩn banner quảng cáo "Sử dụng Zalo PC".
+
+  File này phụ thuộc tên class của Zalo; nếu Zalo cập nhật làm vỡ giao diện, tắt nó trong menu.
 
 ## Tinh chỉnh giao diện bằng CSS tùy chỉnh
 

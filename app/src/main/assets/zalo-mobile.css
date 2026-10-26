@@ -1,18 +1,261 @@
 /*
- * Phone layout tweaks that DO depend on Zalo Web's own class names (checked 2026-10-26).
- * Toggled by "Giao diện điện thoại" in the floating menu; if a Zalo update breaks the
- * layout, turn it off there. Generic rules live in inject.css.
+ * "Giao diện điện thoại": re-skins Zalo Web's compact layout to look like the Zalo phone app
+ * (blue headers, bottom tab bar, one-line composer). Depends on Zalo Web's own class names
+ * (checked 2026-10-26 at 393px). If a Zalo update breaks the layout, turn it off in the menu.
+ * Generic rules live in inject.css; the "⋯" tools toggle is added by inject.js.
  *
- * Zalo Web already switches to a single-pane "compact-mode" below ~850px: the chat list
- * and the conversation take turns, with a back button (.conv-back-btn) in the chat header.
+ * Zalo Web switches to a single-pane "compact-mode" below ~850px: the chat list and the
+ * conversation take turns, with a back button (.conv-back-btn) in the open view's header.
  */
+
+/* ------------------------------------------------------------------ Banners */
 
 /* Info banners at the top ("Sử dụng Zalo PC…"); warning/error banners stay visible. */
 .system-banner__container:has(.z-banner.--emphasis-info) {
   display: none !important;
 }
 
-/* While a conversation is open, hide the 64px icon rail so the chat spans the full width. */
+/* ------------------------------------------------------------------ Bottom tab bar */
+
+/* While a conversation or sub-page is open, hide the rail/tab bar so it spans the full width. */
 #container:has(.conv-back-btn) #sidebarNav.compact-mode {
   display: none !important;
+}
+
+#sidebarNav.compact-mode {
+  width: 100% !important;
+}
+
+#sidebarNav.compact-mode > .conv-list-compact {
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  padding-bottom: 56px;
+  box-sizing: border-box;
+}
+
+#container > .page-container {
+  padding-bottom: 56px;
+  box-sizing: border-box;
+}
+
+/* The vertical icon rail becomes a fixed bar along the bottom. */
+#sidebarNav.compact-mode #main-tab {
+  position: fixed !important;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto !important;
+  width: auto !important;
+  height: 56px !important;
+  z-index: 50;
+  flex-direction: row !important;
+  justify-content: space-around !important;
+  align-items: stretch !important;
+  background: #fff !important;
+  border-top: 0.5px solid #e1e4e8;
+}
+
+/* Flatten the rail's wrapper groups so every tab is a direct flex item. */
+#sidebarNav.compact-mode #main-tab > div,
+#sidebarNav.compact-mode #main-tab .nav__tabs__top,
+#sidebarNav.compact-mode #main-tab .nav__tabs__bottom,
+#sidebarNav.compact-mode #main-tab .nav__tabs__bottom > div:not(.leftbar-tab) {
+  display: contents !important;
+}
+
+/* Avatar (also under Cài đặt → Thông tin tài khoản) and the zCloud upsell are dropped. */
+#sidebarNav.compact-mode #main-tab .nav__tabs__zalo,
+#sidebarNav.compact-mode #main-tab .leftbar-tab[title="Zalo Cloud"] {
+  display: none !important;
+}
+
+#sidebarNav.compact-mode #main-tab .leftbar-tab {
+  flex: 1 1 0 !important;
+  width: auto !important;
+  height: 56px !important;
+  padding: 4px 0 0 !important;
+  justify-content: flex-start !important;
+  color: #7a7f86 !important;
+}
+
+#sidebarNav.compact-mode #main-tab .leftbar-tab .mmi-icon-wr {
+  width: 30px !important;
+  height: 30px !important;
+  background: transparent !important;
+}
+
+#sidebarNav.compact-mode #main-tab .leftbar-tab i {
+  color: #7a7f86 !important;
+  font-size: 24px !important;
+}
+
+/* Zalo ships a hidden text label in every tab; show it under the icon. */
+#sidebarNav.compact-mode #main-tab .leftbar-tab .lb-tab-title {
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  max-width: 76px;
+  font-size: 11px !important;
+  line-height: 14px;
+  color: inherit !important;
+}
+
+/* "My Documents" doesn't fit under an icon; show a short label instead. */
+#sidebarNav.compact-mode #main-tab .leftbar-tab[title="My Documents"] .lb-tab-title {
+  font-size: 0 !important;
+}
+
+#sidebarNav.compact-mode #main-tab .leftbar-tab[title="My Documents"] .lb-tab-title::after {
+  content: "Tài liệu";
+  font-size: 11px;
+}
+
+#sidebarNav.compact-mode #main-tab .leftbar-tab.selected,
+#sidebarNav.compact-mode #main-tab .leftbar-tab.selected i {
+  color: #0068ff !important;
+}
+
+/* ------------------------------------------------------------------ Blue headers */
+
+/* Chat list: search box and the add-friend / new-group buttons. */
+#sidebarNav.compact-mode #contact-search {
+  height: 56px !important;
+  background: #0068ff !important;
+}
+
+#sidebarNav.compact-mode #contact-search .group-search {
+  border: 0 !important;
+  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.18) !important;
+}
+
+#sidebarNav.compact-mode #contact-search input,
+#sidebarNav.compact-mode #contact-search .fake-textholder {
+  color: #fff !important;
+  background: transparent !important;
+}
+
+#sidebarNav.compact-mode #contact-search input::placeholder {
+  color: rgba(255, 255, 255, 0.8) !important;
+}
+
+#sidebarNav.compact-mode #contact-search i {
+  color: #fff !important;
+}
+
+/* Open conversation and contact sub-pages. */
+#chatViewContainer #header,
+#container .head__page__contact__tab {
+  height: 56px !important;
+  min-height: 56px !important;
+  border: 0 !important;
+  background: #0068ff !important;
+}
+
+#chatViewContainer #header,
+#chatViewContainer #header *,
+#container .head__page__contact__tab,
+#container .head__page__contact__tab * {
+  color: #fff !important;
+}
+
+#sidebarNav.compact-mode #contact-search .z--btn--v2:hover,
+#chatViewContainer #header .z--btn--v2:hover,
+#chatViewContainer #header .z--btn--v2.focused,
+#container .head__page__contact__tab .z--btn--v2:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ------------------------------------------------------------------ One-line composer */
+
+/* [⋯][image] | message box + emoji + like/send. The full toolbar comes back with ⋯. */
+#chat-box-input-container-id {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  border-top: 0.5px solid #e1e4e8;
+  background: #fff;
+}
+
+#chat-box-input-container-id > #chatInput {
+  order: 2;
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  border: 0 !important;
+}
+
+#chat-box-input-container-id > #chat-box-bar-id {
+  order: 1;
+  flex: 0 0 auto !important;
+  display: flex !important;
+  align-items: center !important;
+  width: auto !important;
+  height: 50px !important;
+  padding: 0 0 0 4px !important;
+  border: 0 !important;
+}
+
+#chat-box-bar-id .left-chat-box-bar,
+#chat-box-bar-id .chat-box-toolbar {
+  width: auto !important;
+}
+
+#chat-box-bar-id .chat-box-toolbar > li,
+#chat-box-bar-id .right-chat-box-bar {
+  display: none !important;
+}
+
+#chat-box-bar-id .chat-box-toolbar > li:has([title="Gửi hình ảnh"]) {
+  display: flex !important;
+}
+
+.zw-tools-toggle {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: #5f6670;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.zw-tools-toggle:active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Tools open: the toolbar takes its own full-width row above the message box. */
+html.zw-tools-open #chat-box-input-container-id > #chat-box-bar-id {
+  order: 0;
+  flex: 1 1 100% !important;
+  height: auto !important;
+  padding: 4px 8px !important;
+  border-bottom: 0.5px solid #eef0f2 !important;
+}
+
+html.zw-tools-open #chat-box-bar-id .left-chat-box-bar {
+  flex: 1 1 auto;
+  min-width: 0 !important;
+}
+
+html.zw-tools-open #chat-box-bar-id .chat-box-toolbar {
+  display: flex !important;
+  flex: 1 1 auto;
+  flex-wrap: nowrap !important;
+  justify-content: space-between !important;
+  gap: 0 !important;
+}
+
+html.zw-tools-open #chat-box-bar-id .chat-box-toolbar > li {
+  display: flex !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+html.zw-tools-open .zw-tools-toggle {
+  color: #0068ff;
 }

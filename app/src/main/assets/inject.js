@@ -51,6 +51,49 @@
     }
   }
 
+  // ---------------------------------------------------------------- Phone skin (zalo-mobile.css)
+
+  // The skin collapses the composer toolbar; this adds the "⋯" button that brings it back.
+  var root = document.documentElement;
+  root.classList.toggle('zw-skin', !!cfg.mobileCss);
+  if (!cfg.mobileCss) root.classList.remove('zw-tools-open');
+
+  window.__zwEnsureToolsToggle = function () {
+    var existing = document.querySelector('.zw-tools-toggle');
+    if (!root.classList.contains('zw-skin')) {
+      if (existing) existing.remove();
+      return;
+    }
+    var bar = document.getElementById('chat-box-bar-id');
+    if (!bar || (existing && bar.contains(existing))) return;
+    var btn = document.createElement('div');
+    btn.className = 'zw-tools-toggle';
+    btn.setAttribute('role', 'button');
+    btn.setAttribute('aria-label', 'Công cụ');
+    btn.textContent = '⋯';
+    btn.addEventListener('click', function (ev) {
+      ev.preventDefault();
+      ev.stopPropagation();
+      root.classList.toggle('zw-tools-open');
+    });
+    bar.insertBefore(btn, bar.firstChild);
+  };
+  window.__zwEnsureToolsToggle();
+
+  // Zalo re-renders the composer per conversation; re-add the button when it disappears.
+  if (!window.__zwSkinObserver && document.body) {
+    var skinQueued = false;
+    window.__zwSkinObserver = new MutationObserver(function () {
+      if (skinQueued) return;
+      skinQueued = true;
+      requestAnimationFrame(function () {
+        skinQueued = false;
+        window.__zwEnsureToolsToggle();
+      });
+    });
+    window.__zwSkinObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
   // ---------------------------------------------------------------- Splash (MainActivity.hideSplash)
 
   // Keep the native splash up until Zalo has rendered its UI (or we are on the login page).
