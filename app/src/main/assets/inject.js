@@ -854,6 +854,7 @@
   var NEAR_LEVELS = 4;
   var lastDown = null;
   var lastDownAt = 0;
+  var lastDownInComposer = false;
   var lastField = null;
   var lastFieldBlurAt = 0;
   var awayElement = null;
@@ -861,8 +862,8 @@
 
   function touchedNear(field) {
     if (!lastDown || Date.now() - lastDownAt > FOCUS_GRACE_MS) return false;
-    var row = lastDown.closest && lastDown.closest('#chat-box-input-container-id');
-    if (row && row.contains(field)) return true;
+    var composer = lastDownInComposer && document.getElementById('chat-box-input-container-id');
+    if (composer && composer.contains(field)) return true;
     for (var n = lastDown, i = 0; n && i <= NEAR_LEVELS; n = n.parentElement, i++) {
       if (n.contains(field)) return true;
     }
@@ -886,6 +887,8 @@
   document.addEventListener('pointerdown', function (ev) {
     lastDown = ev.target;
     lastDownAt = Date.now();
+    // Noted now: after Send, Zalo replaces what was touched (Gửi turns back into 👍).
+    lastDownInComposer = !!(ev.target.closest && ev.target.closest('#chat-box-input-container-id'));
     awayElement = null;
   }, true);
 
