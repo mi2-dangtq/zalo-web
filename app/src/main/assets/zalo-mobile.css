@@ -39,6 +39,20 @@
   width: 100% !important;
 }
 
+/* On the Danh bạ pages the bottom bar stays, so the hidden rail must keep its place: Zalo opens
+   the Cài đặt menu next to the rail's tab. The sidebar is taken out of the row instead. */
+#container:has(.contact-pages .conv-back-btn) #sidebarNav.compact-mode {
+  display: flex !important;
+  position: absolute !important;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 0 !important;
+  overflow: visible !important;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 #sidebarNav.compact-mode > .conv-list-compact {
   width: 100% !important;
   flex: 1 1 auto !important;
@@ -46,8 +60,10 @@
   box-sizing: border-box;
 }
 
-/* Only while the bottom bar is actually showing (compact mode, nothing opened over it). */
-#container:has(#sidebarNav.compact-mode):not(:has(.conv-back-btn)) > .page-container {
+/* Only while the bottom bar is actually showing (compact mode, no chat opened over it). The
+   Danh bạ pages (friends, groups, invitations) also have a back button, to Zalo's menu of those
+   pages, but they are the tab's own pages: the bar stays, as in the phone app. */
+#container:has(#sidebarNav.compact-mode):not(:has(.conv-back-btn:not(.contact-pages .conv-back-btn))) > .page-container {
   padding-bottom: 56px;
   box-sizing: border-box;
 }
@@ -77,8 +93,8 @@
   background: var(--layer-background, #fff);
 }
 
-/* Hidden while a chat / sub-page is open and while searching the chat list. */
-html:has(.conv-back-btn) #zw-tabbar,
+/* Hidden while a chat is open and while searching the chat list (kept on the Danh bạ pages). */
+html:has(.conv-back-btn:not(.contact-pages .conv-back-btn)) #zw-tabbar,
 html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
   display: none;
 }
