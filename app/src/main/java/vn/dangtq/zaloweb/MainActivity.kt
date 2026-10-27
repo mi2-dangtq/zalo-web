@@ -30,6 +30,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebStorage
 import android.webkit.WebView
@@ -69,6 +70,7 @@ class MainActivity : Activity() {
         private set
 
     private lateinit var downloads: Downloads
+    private lateinit var zaloCss: ZaloCss
     private var injectJs = ""
     private var injectCss = ""
     private var mobileCss = ""
@@ -160,6 +162,7 @@ class MainActivity : Activity() {
         s.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
         s.textZoom = prefs.textZoom
         s.userAgentString = desktopUserAgent()
+        zaloCss = ZaloCss(cacheDir, s.userAgentString)
 
         val cookies = CookieManager.getInstance()
         cookies.setAcceptCookie(true)
@@ -253,6 +256,9 @@ class MainActivity : Activity() {
     }
 
     private inner class ZaloWebViewClient : WebViewClient() {
+        override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
+            zaloCss.intercept(request)
+
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url
             return when (uri.scheme?.lowercase()) {

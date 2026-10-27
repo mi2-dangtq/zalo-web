@@ -106,7 +106,14 @@
         var r = document.getElementById('main-tab');
         if (!item || !r) return;
         var tab = railTabs(r).filter(function (t) { return t.getAttribute('title') === item.dataset.title; })[0];
-        if (tab) tab.click();
+        if (!tab) return;
+        // "Tài liệu" opens the My Documents chat: slide the placeholder in first, as for a tap on a
+        // chat-list row (see "Instant chat opening" below).
+        if (item.dataset.title === 'My Documents' && !document.querySelector('.conv-back-btn')) {
+          window.__zwOpenBehindPlaceholder('My Documents', function () { tab.click(); });
+          return;
+        }
+        tab.click();
       });
       document.body.appendChild(bar);
     }
@@ -136,10 +143,10 @@
   window.__zwRenderTabBar();
 
   // Instant chat opening. Zalo runs 0.2-0.9 s of its own JS before a tapped chat shows up, and
-  // nothing on screen moves while it does. With the skin on, a tap on a conversation is held back
-  // for one painted frame so the placeholder (blue header with the chat's name) is already sliding
-  // in; the slide then runs on the compositor and stays smooth while Zalo works. The tap is then
-  // replayed to Zalo. The placeholder fades out once the slide is over and Zalo's chat view is
+  // nothing on screen moves while it does. With the skin on, a tap on a conversation (or on the
+  // "Tài liệu" tab) is held back for one painted frame so the placeholder (blue header with the
+  // chat's name) is already sliding in; the slide then runs on the compositor and stays smooth
+  // while Zalo works. The tap is then replayed to Zalo. The placeholder fades out once the slide is over and Zalo's chat view is
   // mounted, or after OPENING_MAX_MS if the tap didn't open anything.
   var OPENING_MAX_MS = 2500;
   var OPENING_SLIDE_MS = 160; // zw-slide-in in zalo-mobile.css
@@ -170,7 +177,7 @@
 
   // Mirrors Zalo's chat header (back icon, title, empty subtitle line) so the swap is seamless.
   // The outer element fades out; the inner page slides in, so a fade can start mid-slide.
-  function showOpening(item) {
+  function showOpening(title) {
     var old = document.getElementById('zw-opening');
     if (old) old.remove();
     var el = document.createElement('div');
@@ -187,8 +194,7 @@
     titles.className = 'zw-opening__titles';
     var name = document.createElement('div');
     name.className = 'zw-opening__name';
-    var title = item.querySelector('.conv-item-title__name');
-    name.textContent = title ? title.textContent.trim() : '';
+    name.textContent = title;
     titles.appendChild(name);
     var sub = document.createElement('div');
     sub.className = 'zw-opening__sub';
@@ -212,6 +218,21 @@
     return el;
   }
 
+  // Shows the placeholder and runs open() once the frame with it has been committed (the second
+  // frame callback), unless Back cancelled the opening meanwhile.
+  window.__zwOpenBehindPlaceholder = function (title, open) {
+    var el = showOpening(title);
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        if (el.__zwCancelled) {
+          window.__zwHideOpening();
+          return;
+        }
+        open();
+      });
+    });
+  };
+
   // On window, capture phase: runs before Zalo's own click handlers. Replaced on every injection.
   if (window.__zwOpeningClick) window.removeEventListener('click', window.__zwOpeningClick, true);
   window.__zwOpeningClick = function (ev) {
@@ -226,23 +247,20 @@
     if (!item || target.closest('.z--btn--v2')) return;
     ev.stopImmediatePropagation();
     ev.preventDefault();
-    var el = showOpening(item);
+    var title = item.querySelector('.conv-item-title__name');
     var init = {
       bubbles: true, cancelable: true, composed: true, view: window, detail: ev.detail,
       screenX: ev.screenX, screenY: ev.screenY, clientX: ev.clientX, clientY: ev.clientY,
       button: ev.button, buttons: ev.buttons
     };
-    // The second frame callback runs once the frame with the placeholder has been committed.
-    requestAnimationFrame(function () {
-      requestAnimationFrame(function () {
-        if (el.__zwCancelled || !target.isConnected) {
-          window.__zwHideOpening();
-          return;
-        }
-        var replay = new MouseEvent('click', init);
-        replay.__zwReplay = true;
-        target.dispatchEvent(replay);
-      });
+    window.__zwOpenBehindPlaceholder(title ? title.textContent.trim() : '', function () {
+      if (!target.isConnected) {
+        window.__zwHideOpening();
+        return;
+      }
+      var replay = new MouseEvent('click', init);
+      replay.__zwReplay = true;
+      target.dispatchEvent(replay);
     });
   };
   window.addEventListener('click', window.__zwOpeningClick, true);
