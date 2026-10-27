@@ -53,6 +53,8 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
     trượt theo ngón tay, danh sách chat hiện bên dưới như app iOS; thả tay khi đã kéo quá ~1/3
     màn hình (hoặc hất nhanh) thì đóng chat, chưa đủ thì trượt về. Vuốt một tin nhắn sang trái để
     trả lời tin đó (mở luôn bàn phím; máy rung nhẹ khi đã kéo đủ xa). Cuộn lên xuống vẫn như cũ;
+  - **bàn phím trượt cùng cuộc chat**: khi bàn phím mở/đóng, tin nhắn và ô soạn tin trượt theo nó
+    (cùng đường cong và thời lượng của bàn phím) thay vì nhảy một phát;
   - ẩn quảng cáo và lời nhắc: banner "Sử dụng Zalo PC", banner zBusiness lúc mở app, gợi ý
     "Đồng bộ tin nhắn gần đây?" (đồng bộ vẫn có ở Cài đặt → Dữ liệu → Đồng bộ tin nhắn) và thẻ
     nâng cấp zCloud trong thông tin My Documents.
