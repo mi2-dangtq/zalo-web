@@ -135,6 +135,79 @@
   };
   window.__zwRenderTabBar();
 
+  // Instant chat opening. Zalo spends 0.5-0.9 s of its own JS before a tapped chat shows up, with
+  // nothing on screen reacting meanwhile. With the skin on, tapping a conversation slides in a
+  // placeholder right away (blue header with the chat's avatar and name); it fades out as soon as
+  // Zalo's chat view is mounted, or after OPENING_MAX_MS if the tap didn't open anything.
+  var OPENING_MAX_MS = 2500;
+
+  window.__zwHideOpening = function () {
+    var el = document.getElementById('zw-opening');
+    if (!el || el.classList.contains('zw-opening--done')) return;
+    el.classList.add('zw-opening--done');
+    setTimeout(function () { el.remove(); }, 150);
+  };
+
+  window.__zwSyncOpening = function () {
+    var el = document.getElementById('zw-opening');
+    if (!el) return;
+    if (document.querySelector('.conv-back-btn') || Date.now() - el.__zwShownAt > OPENING_MAX_MS) {
+      window.__zwHideOpening();
+    }
+  };
+
+  // Mirrors Zalo's chat header (back icon, title, empty subtitle line) so the swap is seamless.
+  function showOpening(item) {
+    var old = document.getElementById('zw-opening');
+    if (old) old.remove();
+    var el = document.createElement('div');
+    el.id = 'zw-opening';
+    el.__zwShownAt = Date.now();
+    var header = document.createElement('div');
+    header.className = 'zw-opening__header';
+    var back = document.createElement('i');
+    back.className = 'fa fa-icon-solid-left zw-opening__back';
+    header.appendChild(back);
+    var titles = document.createElement('div');
+    titles.className = 'zw-opening__titles';
+    var name = document.createElement('div');
+    name.className = 'zw-opening__name';
+    var title = item.querySelector('.conv-item-title__name');
+    name.textContent = title ? title.textContent.trim() : '';
+    titles.appendChild(name);
+    var sub = document.createElement('div');
+    sub.className = 'zw-opening__sub';
+    titles.appendChild(sub);
+    header.appendChild(titles);
+    el.appendChild(header);
+    var body = document.createElement('div');
+    body.className = 'zw-opening__body';
+    el.appendChild(body);
+    var composer = document.createElement('div');
+    composer.className = 'zw-opening__composer';
+    el.appendChild(composer);
+    document.body.appendChild(el);
+    // Check every frame until Zalo's chat view is up (or the timeout passes).
+    (function poll() {
+      if (!document.getElementById('zw-opening')) return;
+      window.__zwSyncOpening();
+      requestAnimationFrame(poll);
+    })();
+  }
+
+  if (!window.__zwOpeningInstalled) {
+    window.__zwOpeningInstalled = true;
+    document.addEventListener('click', function (ev) {
+      if (!root.classList.contains('zw-skin') || document.querySelector('.conv-back-btn')) return;
+      var target = ev.target;
+      if (!target || !target.closest) return;
+      var item = target.closest('#conversationListId .conv-item');
+      // The row's own "…" button opens a menu, not the chat.
+      if (!item || target.closest('.z--btn--v2')) return;
+      showOpening(item);
+    }, true);
+  }
+
   // Zalo re-renders the composer per conversation and updates tab badges/selection in place:
   // re-add the "⋯" button and refresh the tab bar after DOM changes (at most once per frame).
   if (!window.__zwSkinObserver && document.body) {
@@ -146,6 +219,7 @@
         skinQueued = false;
         window.__zwEnsureToolsToggle();
         window.__zwRenderTabBar();
+        window.__zwSyncOpening();
       });
     });
     window.__zwSkinObserver.observe(document.body, {
@@ -194,7 +268,7 @@
   // Zalo renders popovers, modals and the media viewer as direct children of <body>. Tiny or
   // click-through nodes (toasts, tooltips) and ones that already ignored two Backs don't count.
   function isOverlay(el) {
-    if (el.id === 'app' || el.id === 'zw-tabbar') return false;
+    if (el.id === 'app' || el.id === 'zw-tabbar' || el.id === 'zw-opening') return false;
     if (/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE|IFRAME)$/.test(el.tagName)) return false;
     if (backState.stuck.has(el) || !isShown(el, MIN_OVERLAY_PX)) return false;
     return getComputedStyle(el).pointerEvents !== 'none';
@@ -219,6 +293,11 @@
 
   // Returns true when something inside Zalo was closed.
   window.__zwBack = function () {
+    // A chat is still opening behind the placeholder: cancel the placeholder, stay in the app.
+    if (document.getElementById('zw-opening') && !document.querySelector('.conv-back-btn')) {
+      if (window.__zwHideOpening) window.__zwHideOpening();
+      return true;
+    }
     var overlay;
     while ((overlay = topOverlay())) {
       if (overlay !== backState.overlay) {

@@ -122,6 +122,97 @@ html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
   color: #0068ff;
 }
 
+/* ------------------------------------------------------------------ Touch feedback */
+
+/* Native apps highlight what's under the finger right away (the default tap flash is off). */
+#conversationListId .conv-item:active,
+.zw-tab:active {
+  background-color: rgba(0, 0, 0, 0.06) !important;
+}
+
+.z--btn--v2:active,
+.zw-tools-toggle:active {
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------ Instant chat opening */
+
+/* Placeholder that inject.js slides in the moment a conversation is tapped, covering the
+   0.5-0.9 s Zalo needs before its chat view appears. Click-through so it never eats a tap. */
+#zw-opening {
+  position: fixed;
+  inset: 0;
+  z-index: 16;
+  display: flex;
+  flex-direction: column;
+  background: var(--layer-background-subtle, #ebecf0);
+  pointer-events: none;
+  animation: zw-slide-in 0.16s ease-out;
+}
+
+#zw-opening.zw-opening--done {
+  opacity: 0;
+  transition: opacity 0.12s linear;
+}
+
+/* Same geometry as Zalo's chat header: 32px back button at x=14, title at x=66. */
+.zw-opening__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 20px;
+  height: 56px;
+  padding: 0 14px;
+  background: #0068ff;
+  color: #fff;
+}
+
+.zw-opening__back {
+  flex: none;
+  width: 32px;
+  font-size: 20px;
+  text-align: center;
+}
+
+.zw-opening__titles {
+  min-width: 0;
+}
+
+.zw-opening__name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 27px;
+}
+
+.zw-opening__sub {
+  height: 21px;
+}
+
+.zw-opening__body {
+  flex: 1;
+}
+
+.zw-opening__composer {
+  flex: none;
+  height: 50px;
+  border-top: 0.5px solid var(--border, #e1e4e8);
+  background: var(--layer-background, #fff);
+}
+
+@keyframes zw-slide-in {
+  from {
+    transform: translateX(24%);
+    opacity: 0.5;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
 /* ------------------------------------------------------------------ Blue headers */
 
 /* Chat list: search box and the add-friend / new-group buttons. */
