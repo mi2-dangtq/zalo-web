@@ -1,8 +1,9 @@
 /*
  * "Giao diện điện thoại": re-skins Zalo Web's compact layout to look like the Zalo phone app
  * (blue headers, bottom tab bar, one-line composer). Depends on Zalo Web's own class names
- * (checked 2026-10-26 at 393px). If a Zalo update breaks the layout, turn it off in the menu.
- * Generic rules live in inject.css; the "⋯" tools toggle is added by inject.js.
+ * (checked 2026-10-27 on the Xiaomi 13). If a Zalo update breaks the layout, turn it off in the
+ * menu. Generic rules live in inject.css; the bottom tab bar and the "⋯" tools toggle are added
+ * by inject.js.
  *
  * Zalo Web switches to a single-pane "compact-mode" below ~850px: the chat list and the
  * conversation take turns, with a back button (.conv-back-btn) in the open view's header.
@@ -39,82 +40,74 @@
   box-sizing: border-box;
 }
 
-/* The vertical icon rail becomes a fixed bar along the bottom. */
+/* Zalo decides how many tabs to show from the rail's own height, and folds "Tin nhắn" and
+   "Danh bạ" into a "•••" tab when the rail is short. So the rail keeps its natural size and is
+   only made invisible (it stays at the left edge so the popovers Zalo anchors to its tabs, like
+   Cài đặt, still open on screen); inject.js draws #zw-tabbar, whose buttons click the real tabs. */
 #sidebarNav.compact-mode #main-tab {
-  position: fixed !important;
+  position: absolute !important;
+  left: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+#zw-tabbar {
+  position: fixed;
   left: 0;
-  right: 0;
   bottom: 0;
-  top: auto !important;
-  width: auto !important;
-  height: 56px !important;
-  z-index: 50;
-  flex-direction: row !important;
-  justify-content: space-around !important;
-  align-items: stretch !important;
-  background: var(--layer-background, #fff) !important;
+  z-index: 15;
+  display: flex;
+  width: 100%;
+  height: 56px;
   border-top: 0.5px solid var(--border, #e1e4e8);
+  background: var(--layer-background, #fff);
 }
 
-/* Flatten the rail's wrapper groups so every tab is a direct flex item. */
-#sidebarNav.compact-mode #main-tab > div,
-#sidebarNav.compact-mode #main-tab .nav__tabs__top,
-#sidebarNav.compact-mode #main-tab .nav__tabs__bottom,
-#sidebarNav.compact-mode #main-tab .nav__tabs__bottom > div:not(.leftbar-tab) {
-  display: contents !important;
+/* Hidden while a chat / sub-page is open and while searching the chat list. */
+html:has(.conv-back-btn) #zw-tabbar,
+html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
+  display: none;
 }
 
-/* Avatar (also under Cài đặt → Thông tin tài khoản) and the zCloud upsell are dropped. */
-#sidebarNav.compact-mode #main-tab .nav__tabs__zalo,
-#sidebarNav.compact-mode #main-tab .leftbar-tab[title="Zalo Cloud"] {
-  display: none !important;
+.zw-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+  color: var(--text-secondary, #7a7f86);
+  font-size: 11px;
+  line-height: 14px;
+  cursor: pointer;
 }
 
-#sidebarNav.compact-mode #main-tab .leftbar-tab {
-  flex: 1 1 0 !important;
-  width: auto !important;
-  height: 56px !important;
-  padding: 4px 0 0 !important;
-  box-sizing: border-box !important;
-  justify-content: flex-start !important;
-  color: var(--text-secondary, #7a7f86) !important;
-}
-
-#sidebarNav.compact-mode #main-tab .leftbar-tab .mmi-icon-wr {
+/* Icon and unread badge are copied from Zalo's own tab. */
+.zw-tab .mmi-icon-wr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 30px !important;
   height: 30px !important;
   background: transparent !important;
 }
 
-#sidebarNav.compact-mode #main-tab .leftbar-tab i {
-  color: var(--text-secondary, #7a7f86) !important;
+.zw-tab i {
+  color: inherit !important;
   font-size: 24px !important;
 }
 
-/* Zalo ships a hidden text label in every tab; show it under the icon. */
-#sidebarNav.compact-mode #main-tab .leftbar-tab .lb-tab-title {
-  display: block !important;
-  width: auto !important;
-  height: auto !important;
-  max-width: 76px;
-  font-size: 11px !important;
-  line-height: 14px;
-  color: inherit !important;
+.zw-tab__label {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
-/* "My Documents" doesn't fit under an icon; show a short label instead. */
-#sidebarNav.compact-mode #main-tab .leftbar-tab[title="My Documents"] .lb-tab-title {
-  font-size: 0 !important;
-}
-
-#sidebarNav.compact-mode #main-tab .leftbar-tab[title="My Documents"] .lb-tab-title::after {
-  content: "Tài liệu";
-  font-size: 11px;
-}
-
-#sidebarNav.compact-mode #main-tab .leftbar-tab.selected,
-#sidebarNav.compact-mode #main-tab .leftbar-tab.selected i {
-  color: #0068ff !important;
+.zw-tab--selected {
+  color: #0068ff;
 }
 
 /* ------------------------------------------------------------------ Blue headers */
@@ -247,6 +240,7 @@ html.zw-tools-open #chat-box-input-container-id > #chat-box-bar-id {
 }
 
 html.zw-tools-open #chat-box-bar-id .left-chat-box-bar {
+  display: flex !important;
   flex: 1 1 auto;
   min-width: 0 !important;
 }
@@ -254,6 +248,8 @@ html.zw-tools-open #chat-box-bar-id .left-chat-box-bar {
 html.zw-tools-open #chat-box-bar-id .chat-box-toolbar {
   display: flex !important;
   flex: 1 1 auto;
+  width: 100% !important;
+  margin: 0 !important;
   flex-wrap: nowrap !important;
   justify-content: space-between !important;
   gap: 0 !important;

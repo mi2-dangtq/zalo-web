@@ -80,7 +80,62 @@
   };
   window.__zwEnsureToolsToggle();
 
-  // Zalo re-renders the composer per conversation; re-add the button when it disappears.
+  // Bottom tab bar. Zalo folds tabs into "•••" when its rail is short, so the skin hides the rail
+  // at its natural size and this bar mirrors it: icon + unread badge copied from each real tab,
+  // and a tap clicks the real tab. "Zalo Cloud" (a zCloud upsell) is left out.
+  function railTabs(rail) {
+    return Array.prototype.filter.call(rail.querySelectorAll('.leftbar-tab'), function (t) {
+      var title = t.getAttribute('title');
+      return !!title && title !== 'Zalo Cloud';
+    });
+  }
+
+  window.__zwRenderTabBar = function () {
+    var bar = document.getElementById('zw-tabbar');
+    var rail = document.getElementById('main-tab');
+    if (!root.classList.contains('zw-skin') || !rail || !rail.closest('#sidebarNav.compact-mode')) {
+      if (bar) bar.remove();
+      return;
+    }
+    if (!bar) {
+      bar = document.createElement('div'); // not <nav>: Zalo styles nav elements
+      bar.id = 'zw-tabbar';
+      bar.addEventListener('click', function (ev) {
+        var item = ev.target.closest('.zw-tab');
+        var r = document.getElementById('main-tab');
+        if (!item || !r) return;
+        var tab = railTabs(r).filter(function (t) { return t.getAttribute('title') === item.dataset.title; })[0];
+        if (tab) tab.click();
+      });
+      document.body.appendChild(bar);
+    }
+    var tabs = railTabs(rail);
+    var signature = tabs.map(function (t) {
+      var icon = t.querySelector('.mmi-icon-wr');
+      return t.getAttribute('title') + '|' + t.classList.contains('selected') + '|' + (icon ? icon.innerHTML : '');
+    }).join('\u0001');
+    if (bar.__zwSignature === signature) return;
+    bar.__zwSignature = signature;
+    bar.textContent = '';
+    tabs.forEach(function (t) {
+      var title = t.getAttribute('title');
+      var item = document.createElement('div');
+      item.className = 'zw-tab' + (t.classList.contains('selected') ? ' zw-tab--selected' : '');
+      item.setAttribute('role', 'button');
+      item.dataset.title = title;
+      var icon = t.querySelector('.mmi-icon-wr');
+      if (icon) item.appendChild(icon.cloneNode(true));
+      var label = document.createElement('span');
+      label.className = 'zw-tab__label';
+      label.textContent = title === 'My Documents' ? 'Tài liệu' : title;
+      item.appendChild(label);
+      bar.appendChild(item);
+    });
+  };
+  window.__zwRenderTabBar();
+
+  // Zalo re-renders the composer per conversation and updates tab badges/selection in place:
+  // re-add the "⋯" button and refresh the tab bar after DOM changes (at most once per frame).
   if (!window.__zwSkinObserver && document.body) {
     var skinQueued = false;
     window.__zwSkinObserver = new MutationObserver(function () {
@@ -89,9 +144,12 @@
       requestAnimationFrame(function () {
         skinQueued = false;
         window.__zwEnsureToolsToggle();
+        window.__zwRenderTabBar();
       });
     });
-    window.__zwSkinObserver.observe(document.body, { childList: true, subtree: true });
+    window.__zwSkinObserver.observe(document.body, {
+      childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class']
+    });
   }
 
   // ---------------------------------------------------------------- Splash (MainActivity.hideSplash)
@@ -135,7 +193,8 @@
   // Zalo renders popovers, modals and the media viewer as direct children of <body>. Tiny or
   // click-through nodes (toasts, tooltips) and ones that already ignored two Backs don't count.
   function isOverlay(el) {
-    if (el.id === 'app' || /^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE|IFRAME)$/.test(el.tagName)) return false;
+    if (el.id === 'app' || el.id === 'zw-tabbar') return false;
+    if (/^(SCRIPT|STYLE|LINK|META|NOSCRIPT|TEMPLATE|IFRAME)$/.test(el.tagName)) return false;
     if (backState.stuck.has(el) || !isShown(el, MIN_OVERLAY_PX)) return false;
     return getComputedStyle(el).pointerEvents !== 'none';
   }
@@ -277,6 +336,33 @@
       lastField = field;
       lastFieldBlurAt = Date.now();
     }
+  }, true);
+
+  // ---------------------------------------------------------------- Long-press = right-click
+
+  // A long-press makes WebView fire contextmenu with button -1 and an ancestor (e.g. the date
+  // block) as target, so Zalo's message / conversation menus never open. Re-send it as a
+  // right-click on the element the finger actually touched. Text fields keep their own
+  // long-press (select / paste).
+  var touchDown = null;
+
+  document.addEventListener('pointerdown', function (ev) {
+    touchDown = ev.pointerType === 'touch'
+      ? { el: ev.target, x: ev.clientX, y: ev.clientY, at: Date.now() }
+      : null;
+  }, true);
+
+  document.addEventListener('contextmenu', function (ev) {
+    if (ev.button === 2 || !touchDown || Date.now() - touchDown.at > 2000) return;
+    var down = touchDown;
+    touchDown = null;
+    if (editableOf(down.el)) return;
+    ev.preventDefault();
+    ev.stopImmediatePropagation();
+    down.el.dispatchEvent(new MouseEvent('contextmenu', {
+      bubbles: true, cancelable: true, composed: true, view: window,
+      button: 2, buttons: 2, clientX: down.x, clientY: down.y, screenX: down.x, screenY: down.y
+    }));
   }, true);
 
   // ---------------------------------------------------------------- Downloads
