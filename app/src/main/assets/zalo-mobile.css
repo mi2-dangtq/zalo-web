@@ -147,21 +147,28 @@ html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
 /* ------------------------------------------------------------------ Instant chat opening */
 
 /* Placeholder that inject.js slides in the moment a conversation is tapped, covering the
-   0.5-0.9 s Zalo needs before its chat view appears. Click-through so it never eats a tap. */
+   0.2-0.9 s Zalo needs before its chat view appears. Click-through so it never eats a tap.
+   The page slides (transform/opacity only, so it keeps moving while Zalo's JS runs); the outer
+   element fades out, so the fade never fights the slide. */
 #zw-opening {
   position: fixed;
   inset: 0;
   z-index: 16;
-  display: flex;
-  flex-direction: column;
-  background: var(--layer-background-subtle, #ebecf0);
   pointer-events: none;
-  animation: zw-slide-in 0.16s ease-out;
 }
 
 #zw-opening.zw-opening--done {
   opacity: 0;
   transition: opacity 0.12s linear;
+}
+
+.zw-opening__page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--layer-background-subtle, #ebecf0);
+  animation: zw-slide-in 0.16s cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Same geometry as Zalo's chat header: 32px back button at x=14, title at x=66. */
