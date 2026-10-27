@@ -271,6 +271,51 @@ aside.compact-chat-info .chat-info__header .z--btn--v2:hover {
   background: rgba(255, 255, 255, 0.15) !important;
 }
 
+/* ------------------------------------------------------------------ Phone-app look */
+
+/* Bubbles: rounder, no desktop drop shadow, with a small "tail" corner on the sender's side. */
+#messageViewScroll .card.shadow-bubble {
+  border-radius: 16px !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+  padding: 8px 12px !important;
+}
+
+#messageViewScroll .card.shadow-bubble.me {
+  border-bottom-right-radius: 4px !important;
+}
+
+#messageViewScroll .card.shadow-bubble:not(.me) {
+  border-bottom-left-radius: 4px !important;
+}
+
+/* The empty 👍 button sat on every bubble; show it only on the message you tap (sticky hover),
+   like the reply / forward buttons. Buttons that already carry reactions stay visible. */
+#messageViewScroll .message-reaction-container:has(.default-react-icon-thumb) {
+  visibility: hidden;
+}
+
+#messageViewScroll .chat-message:hover .message-reaction-container {
+  visibility: visible;
+}
+
+/* Composer: the message box becomes a rounded pill. */
+#chat-input-container-id .chat-input-container__left-layout {
+  height: auto !important;
+  min-height: 36px;
+  margin: 7px 0;
+  padding: 7px 14px !important;
+  border-radius: 18px !important;
+  background: var(--layer-background-subtle, #f1f2f4) !important;
+  box-sizing: border-box;
+}
+
+/* Chat header: quieter subtitle under the name. */
+#chatViewContainer #header .threadChat__title > div:nth-child(2) {
+  font-size: 12px !important;
+  opacity: 0.85;
+}
+
 /* ------------------------------------------------------------------ One-line composer */
 
 /* [⋯][image] | message box + emoji + like/send. The full toolbar comes back with ⋯. */
