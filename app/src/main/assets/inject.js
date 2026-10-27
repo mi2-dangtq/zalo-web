@@ -358,6 +358,17 @@
     });
   }
 
+  // On a touch screen :hover and Zalo's own row hover state ("⋯" in place of the time) stick to the
+  // chat-list row that was tapped to open the chat. Before the list shows again without a new touch
+  // (swipe back, system Back), tell Zalo the mouse left it; zalo-mobile.css drops the :hover look.
+  function leaveListRows() {
+    Array.prototype.forEach.call(document.querySelectorAll('#conversationListId .conv-item:hover'), function (row) {
+      row.dispatchEvent(new MouseEvent('mouseout', {
+        bubbles: true, cancelable: true, composed: true, view: window, relatedTarget: document.body
+      }));
+    });
+  }
+
   // Returns true when something inside Zalo was closed.
   window.__zwBack = function () {
     // A chat is still opening behind the placeholder: cancel the placeholder, stay in the app.
@@ -413,6 +424,7 @@
       var now = Date.now();
       if (now - backState.lastChatClose > CHAT_CLOSE_MS) {
         backState.lastChatClose = now;
+        leaveListRows();
         convBack.click();
       }
       return true;
@@ -503,6 +515,7 @@
   function startBack() {
     var page = document.querySelector('#container main');
     if (!page) return false;
+    leaveListRows();
     var shade = document.createElement('div');
     shade.id = 'zw-back-shade';
     document.body.appendChild(shade);

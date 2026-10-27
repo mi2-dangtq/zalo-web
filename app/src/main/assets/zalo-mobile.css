@@ -163,6 +163,15 @@ html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
   opacity: 0.6;
 }
 
+/* On a touch screen :hover sticks to the last tapped row, e.g. the one that opened the chat just
+   closed: chat-list rows get no hover look (the press feedback above stays). In the one-pane
+   layout the open chat's row isn't highlighted either; it only showed under the swipe back, as a
+   dark band. */
+#sidebarNav.compact-mode #conversationListId .conv-item:hover,
+#sidebarNav.compact-mode #conversationListId .conv-item.selected {
+  background: var(--layer-background);
+}
+
 /* ------------------------------------------------------------------ Instant chat opening */
 
 /* Placeholder that inject.js slides in the moment a conversation is tapped, covering the
