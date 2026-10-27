@@ -334,10 +334,12 @@ html:not(.zw-swiping) #messageViewScroll .chat-message:hover .message-reaction-c
 
 /* ------------------------------------------------------------------ Swipe gestures in a chat */
 
-/* Vertical drags keep scrolling natively; horizontal ones are left to inject.js (swipe a message
-   left to reply, the background left to go back). Set on the scroller itself
-   (#messageViewContainer > .transform-gpu): it also covers the empty space above a short chat. */
-#messageViewContainer > div {
+/* Vertical drags keep scrolling natively; horizontal ones are left to inject.js (swipe right
+   anywhere to go back, a message left to reply). Set on the message scroller itself
+   (#messageViewContainer > .transform-gpu), so it also covers the empty space above a short chat,
+   and on the header. */
+#messageViewContainer > div,
+#chatViewContainer #header {
   touch-action: pan-y pinch-zoom;
 }
 
@@ -351,7 +353,7 @@ html.zw-swiping #messageViewScroll .MQA-container {
   visibility: hidden !important;
 }
 
-/* Reply arrow beside the swiped message, or back chevron at the finger's height. */
+/* Reply arrow beside the swiped message, or back chevron at the left edge at the finger's height. */
 .zw-swipe-hint {
   position: fixed;
   right: 12px;
@@ -371,6 +373,11 @@ html.zw-swiping #messageViewScroll .MQA-container {
 
 .zw-swipe-hint i {
   color: inherit !important;
+}
+
+.zw-swipe-hint--back {
+  right: auto;
+  left: 12px;
 }
 
 .zw-swipe-hint--armed {

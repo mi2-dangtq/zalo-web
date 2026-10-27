@@ -420,14 +420,15 @@
     return false;
   };
 
-  // ---------------------------------------------------------------- Swipe left in a chat
+  // ---------------------------------------------------------------- Swipes in a chat
 
-  // Phone-app gestures in an open conversation (skin on): swipe a message to the left to reply to
-  // it, swipe the background to the left to go back. zalo-mobile.css gives the message list
-  // "touch-action: pan-y", so vertical drags still scroll natively (and end here in pointercancel)
-  // while horizontal drags are left to this code. The message follows the finger; a hint circle
-  // (reply arrow beside the message, or back chevron at the finger's height) fills in, and turns
-  // blue with a haptic tick once letting go will act.
+  // Phone-app gestures in an open conversation (skin on): swipe anywhere in it (messages,
+  // background, header) to the right to go back; swipe a message to the left to reply to it.
+  // zalo-mobile.css gives those areas "touch-action: pan-y", so vertical drags still scroll
+  // natively (and end here in pointercancel) while horizontal drags are left to this code. A hint
+  // circle fills in as the finger moves (back chevron at the left edge, at the finger's height;
+  // reply arrow beside the message, which follows the finger) and turns blue with a haptic tick
+  // once letting go will act.
   var SWIPE_SLOP_PX = 10;
   var SWIPE_REPLY_PX = 56;
   var SWIPE_BACK_PX = 72;
@@ -435,6 +436,7 @@
   var SWIPE_FOCUS_MS = 1000;
   var REPLY_WAIT_MS = 600;
   var UNHOVER_MS = 300;
+  var SWIPE_AREA = '#messageViewContainer, #chatViewContainer #header';
   var BUBBLE = '[id^="message-frame_"]';
   var swipe = null;
 
@@ -479,7 +481,7 @@
 
   function swipeHint(back) {
     var el = document.createElement('div');
-    el.className = 'zw-swipe-hint';
+    el.className = back ? 'zw-swipe-hint zw-swipe-hint--back' : 'zw-swipe-hint';
     var icon = document.createElement('i');
     icon.className = back ? 'fa fa-icon-solid-left' : 'fa fa-Quote_24_Filled';
     el.appendChild(icon);
@@ -487,10 +489,10 @@
     return el;
   }
 
-  // A touch that never became a swipe: a tap, a scroll, a drag to the right.
+  // A touch that never became a swipe: a tap, a scroll, a drag to the left off the messages.
   function dropSwipe(s) {
     swipe = null;
-    if (s.reply) root.classList.remove('zw-swiping');
+    if (s.row) root.classList.remove('zw-swiping');
   }
 
   function endSwipe(act) {
@@ -502,17 +504,16 @@
     }
     swipe = null;
     s.hint.remove();
-    if (s.row) {
+    if (s.reply) {
       var row = s.row;
       row.classList.add('zw-swipe-settle');
       row.style.transform = '';
       setTimeout(function () { row.classList.remove('zw-swipe-settle'); }, SWIPE_SETTLE_MS);
-    }
-    if (s.reply) {
       if (act && s.armed) reply(s); else hoverMessage(s.bubble, false);
-    } else if (act && s.armed && window.__zwBack) {
-      window.__zwBack();
+      return;
     }
+    if (s.row) root.classList.remove('zw-swiping');
+    if (act && s.armed && window.__zwBack) window.__zwBack();
   }
 
   var swipeHandlers = {};
@@ -521,7 +522,7 @@
     endSwipe(false);
     if (ev.pointerType !== 'touch' || !ev.isPrimary || !root.classList.contains('zw-skin')) return;
     var target = ev.target;
-    if (!target || !target.closest || !target.closest('#messageViewContainer') ||
+    if (!target || !target.closest || !target.closest(SWIPE_AREA) ||
         !document.querySelector('#chatViewContainer .conv-back-btn')) return;
     var bubble = target.closest(BUBBLE);
     var row = bubble && bubble.closest('.chat-message');
@@ -531,7 +532,7 @@
     }
     swipe = {
       id: ev.pointerId, x: ev.clientX, y: ev.clientY, target: target, bubble: row ? bubble : null,
-      row: row, reply: !!row, started: false, armed: false
+      row: row, reply: false, started: false, armed: false
     };
   };
 
@@ -542,11 +543,12 @@
     var dy = ev.clientY - s.y;
     if (!s.started) {
       if (Math.abs(dx) < SWIPE_SLOP_PX && Math.abs(dy) < SWIPE_SLOP_PX) return;
-      if (dx > -SWIPE_SLOP_PX || Math.abs(dy) > Math.abs(dx)) {
-        dropSwipe(s); // rightwards or mostly vertical: not ours
+      if (Math.abs(dy) > Math.abs(dx) || (dx < 0 && !s.row)) {
+        dropSwipe(s); // mostly vertical, or to the left off the messages: not ours
         return;
       }
       s.started = true;
+      s.reply = dx < 0;
       s.x = ev.clientX; // count from here, so the message doesn't jump by the slop
       // The finger now drags rather than rests on what it touched: Zalo shows some hints while a
       // finger is down (e.g. "Đã có trên Cloud" on a file) and hides them on touchend.
@@ -569,7 +571,7 @@
       dx = 0;
     }
     var limit = s.reply ? SWIPE_REPLY_PX : SWIPE_BACK_PX;
-    var pull = Math.max(0, -dx);
+    var pull = Math.max(0, s.reply ? -dx : dx);
     // Past the point where it acts, the message keeps following at a third of the speed.
     var offset = pull <= limit ? pull : limit + (pull - limit) / 3;
     var progress = Math.min(1, pull / limit);
@@ -577,7 +579,7 @@
       s.row.style.transform = 'translateX(' + (-offset) + 'px)';
       s.hint.style.transform = 'scale(' + (0.5 + progress / 2) + ')';
     } else {
-      s.hint.style.transform = 'translateX(' + Math.round((1 - progress) * 48) + 'px)';
+      s.hint.style.transform = 'translateX(' + Math.round((progress - 1) * 48) + 'px)';
     }
     s.hint.style.opacity = String(progress);
     var armed = pull >= limit;
