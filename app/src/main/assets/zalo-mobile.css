@@ -30,9 +30,19 @@
 
 /* ------------------------------------------------------------------ Bottom tab bar */
 
-/* While a conversation or sub-page is open, hide the rail/tab bar so it spans the full width. */
+/* While a conversation or sub-page is open it spans the full width: the sidebar (rail + chat
+   list) is taken out of the row and hidden behind it. It stays laid out, so the swipe back
+   (inject.js) can show the list under the sliding chat at once; showing a display:none list
+   costs a ~35 ms layout first, a visible stutter as the swipe starts. */
 #container:has(.conv-back-btn) #sidebarNav.compact-mode {
-  display: none !important;
+  display: flex !important;
+  position: absolute !important;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 0;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 #sidebarNav.compact-mode {
@@ -40,17 +50,10 @@
 }
 
 /* On the Danh bạ pages the bottom bar stays, so the hidden rail must keep its place: Zalo opens
-   the Cài đặt menu next to the rail's tab. The sidebar is taken out of the row instead. */
+   the Cài đặt menu next to the rail's tab. */
 #container:has(.contact-pages .conv-back-btn) #sidebarNav.compact-mode {
-  display: flex !important;
-  position: absolute !important;
-  top: 0;
-  bottom: 0;
-  left: 0;
   width: 0 !important;
   overflow: visible !important;
-  visibility: hidden;
-  pointer-events: none;
 }
 
 #sidebarNav.compact-mode > .conv-list-compact {
@@ -353,7 +356,7 @@ html.zw-swiping #messageViewScroll .MQA-container {
   visibility: hidden !important;
 }
 
-/* Reply arrow beside the swiped message, or back chevron at the left edge at the finger's height. */
+/* Reply arrow beside the swiped message. */
 .zw-swipe-hint {
   position: fixed;
   right: 12px;
@@ -375,13 +378,47 @@ html.zw-swiping #messageViewScroll .MQA-container {
   color: inherit !important;
 }
 
-.zw-swipe-hint--back {
-  right: auto;
-  left: 12px;
-}
-
 .zw-swipe-hint--armed {
   background: #0068ff;
+}
+
+/* Swipe back: Zalo's <main> (the chat page) follows the finger; the chat list and the tab bar
+   show underneath, darkened by #zw-back-shade. Stacking: list (0) < tab bar (5) < shade (6) <
+   <main> (10, Zalo's own). inject.js sets the transforms and the shade's opacity. */
+html.zw-back #container #sidebarNav.compact-mode {
+  visibility: visible;
+}
+
+html.zw-back #zw-tabbar {
+  display: flex !important;
+  z-index: 5;
+}
+
+html.zw-back #container main {
+  box-shadow: -4px 0 16px rgba(0, 0, 0, 0.16);
+}
+
+html.zw-back #container main,
+html.zw-back #container #sidebarNav.compact-mode,
+html.zw-back #zw-tabbar {
+  will-change: transform;
+}
+
+#zw-back-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Letting go: the rest of the way out, or back into place. */
+html.zw-back-settle #container main,
+html.zw-back-settle #container #sidebarNav.compact-mode,
+html.zw-back-settle #zw-tabbar,
+html.zw-back-settle #zw-back-shade {
+  transition: transform 0.25s cubic-bezier(0.2, 0, 0, 1), opacity 0.25s cubic-bezier(0.2, 0, 0, 1);
 }
 
 /* Composer: the message box becomes a rounded pill. Zalo's own 10px padding around it is

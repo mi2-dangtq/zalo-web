@@ -49,9 +49,10 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
     Android cũng tô xanh (biểu tượng trắng);
   - **khung soạn tin một hàng**: `⋯` · ảnh · ô nhập · biểu cảm · gửi. Bấm `⋯` để hiện lại đủ
     9 công cụ (sticker, file, danh thiếp, định dạng…);
-  - **vuốt trong cuộc chat**: vuốt sang phải ở bất kỳ đâu (tin nhắn, nền, header) để đóng chat;
-    vuốt một tin nhắn sang trái để trả lời tin đó (mở luôn bàn phím); máy rung nhẹ khi đã kéo đủ
-    xa. Cuộn lên xuống vẫn như cũ;
+  - **vuốt trong cuộc chat**: vuốt sang phải ở bất kỳ đâu (tin nhắn, nền, header) thì trang chat
+    trượt theo ngón tay, danh sách chat hiện bên dưới như app iOS; thả tay khi đã kéo quá ~1/3
+    màn hình (hoặc hất nhanh) thì đóng chat, chưa đủ thì trượt về. Vuốt một tin nhắn sang trái để
+    trả lời tin đó (mở luôn bàn phím; máy rung nhẹ khi đã kéo đủ xa). Cuộn lên xuống vẫn như cũ;
   - ẩn quảng cáo và lời nhắc: banner "Sử dụng Zalo PC", banner zBusiness lúc mở app, gợi ý
     "Đồng bộ tin nhắn gần đây?" (đồng bộ vẫn có ở Cài đặt → Dữ liệu → Đồng bộ tin nhắn) và thẻ
     nâng cấp zCloud trong thông tin My Documents.
