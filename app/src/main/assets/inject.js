@@ -755,6 +755,7 @@
   var KEYBOARD_MS = 285;
   var KEYBOARD_MIN_PX = 100; // smaller size changes are the keyboard's own (suggestion strip etc.)
   var KEYBOARD_SAFETY_MS = 700; // opened but the WebView never shrank: drop the slide anyway
+  var KEYBOARD_CATCH_UP_MIN_MS = 150;
 
   function chatToSlide() {
     return root.classList.contains('zw-skin') ? document.getElementById('chatView') : null;
@@ -806,10 +807,14 @@
     if (grew < -KEYBOARD_MIN_PX) {
       unslideChat(view); // keyboard up: the layout lifts the chat now
     } else if (grew > KEYBOARD_MIN_PX) {
+      // The keyboard has been going down for a while by now (the WebView takes ~50 ms to lay out at
+      // the new size). Jumping to where it is reads as a jerk; start from where the chat is and
+      // catch up over the rest of the animation instead.
       var closing = window.__zwKeyboardClosing;
       window.__zwKeyboardClosing = null;
       if (closing && Date.now() - closing.startedAt > closing.ms) closing = null; // a stale one
-      slideChat(view, -grew, 0, closing ? closing.ms : KEYBOARD_MS, closing ? sinceStart(closing) : 0);
+      var rest = closing ? closing.ms - sinceStart(closing) : KEYBOARD_MS;
+      slideChat(view, -grew, 0, Math.max(KEYBOARD_CATCH_UP_MIN_MS, rest), 0);
     }
   };
   window.addEventListener('resize', window.__zwKeyboardResize);
