@@ -91,6 +91,8 @@
     });
   }
 
+  var TAB_RESYNC_MS = 800;
+
   window.__zwRenderTabBar = function () {
     var bar = document.getElementById('zw-tabbar');
     var rail = document.getElementById('main-tab');
@@ -111,6 +113,22 @@
         // chat-list row (see "Instant chat opening" below).
         if (item.dataset.title === 'My Documents' && !document.querySelector('.conv-back-btn')) {
           window.__zwOpenBehindPlaceholder('My Documents', function () { tab.click(); });
+          return;
+        }
+        // Zalo takes 0.1-0.2 s to switch tabs with nothing moving meanwhile: light the tapped tab
+        // up first and hand the tap over once that frame is on screen. The bar is then redrawn
+        // from the rail, in case Zalo didn't switch. Cài đặt only opens a menu.
+        if (item.dataset.title !== 'Cài đặt' && !item.classList.contains('zw-tab--selected')) {
+          Array.prototype.forEach.call(bar.querySelectorAll('.zw-tab'), function (t) {
+            t.classList.toggle('zw-tab--selected', t === item);
+          });
+          requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+              tab.click();
+              bar.__zwSignature = null;
+              setTimeout(window.__zwRenderTabBar, TAB_RESYNC_MS);
+            });
+          });
           return;
         }
         tab.click();
