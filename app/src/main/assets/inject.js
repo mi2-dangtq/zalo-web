@@ -82,11 +82,12 @@
 
   // Bottom tab bar. Zalo folds tabs into "•••" when its rail is short, so the skin hides the rail
   // at its natural size and this bar mirrors it: icon + unread badge copied from each real tab,
-  // and a tap clicks the real tab. "Zalo Cloud" (a zCloud upsell) is left out.
+  // and a tap clicks the real tab. Left out: "Zalo Cloud" (a zCloud upsell) and "Công cụ"
+  // (#mainTabToolBA, the zBusiness tools panel).
   function railTabs(rail) {
     return Array.prototype.filter.call(rail.querySelectorAll('.leftbar-tab'), function (t) {
       var title = t.getAttribute('title');
-      return !!title && title !== 'Zalo Cloud';
+      return !!title && title !== 'Zalo Cloud' && t.id !== 'mainTabToolBA';
     });
   }
 
