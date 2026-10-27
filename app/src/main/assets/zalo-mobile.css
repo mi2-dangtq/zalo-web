@@ -16,6 +16,18 @@
   display: none !important;
 }
 
+/* Ads and nags (checked 2026-10-27):
+   - the image banner above the chat list ("Nâng cấp zBusiness Pro"), shown for a few seconds
+     after start;
+   - "Đồng bộ tin nhắn gần đây?" above the chat list. Syncing stays available from
+     Cài đặt → Dữ liệu → Đồng bộ tin nhắn, and the "Đang đồng bộ…" progress bar is kept;
+   - the server-pushed zCloud "Nâng cấp dung lượng" card in My Documents' info panel. */
+.conversation-list__banner__full-mode,
+.sync-v2-banner.suggestNewSync,
+#mycloud-right-sidebar {
+  display: none !important;
+}
+
 /* ------------------------------------------------------------------ Bottom tab bar */
 
 /* While a conversation or sub-page is open, hide the rail/tab bar so it spans the full width. */
