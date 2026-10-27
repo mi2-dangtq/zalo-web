@@ -765,7 +765,14 @@
     clearTimeout(window.__zwKeyboardTimer);
     if (view.__zwKeyboardSlide) view.__zwKeyboardSlide.cancel();
     view.__zwKeyboardSlide = null;
+    view.__zwKeyboardLifting = false;
     root.classList.remove('zw-keyboard');
+  }
+
+  // Where the slide has the chat right now (px, negative = up).
+  function slideOffset(view) {
+    var m = /matrix\(1, 0, 0, 1, 0, (-?[\d.e-]+)\)/.exec(getComputedStyle(view).transform);
+    return m ? parseFloat(m[1]) : 0;
   }
 
   function slideChat(view, from, to, ms, elapsed) {
@@ -775,6 +782,7 @@
       [{ transform: 'translateY(' + from + 'px)' }, { transform: 'translateY(' + to + 'px)' }],
       { duration: ms, delay: -elapsed, easing: KEYBOARD_EASE, fill: 'forwards' }
     );
+    view.__zwKeyboardLifting = to < 0; // opening: up to the keyboard until the WebView shrinks
     window.__zwKeyboardTimer = setTimeout(function () { unslideChat(view); },
       ms - elapsed + (to ? KEYBOARD_SAFETY_MS : 0));
   }
@@ -786,13 +794,21 @@
   // Called by the app as the keyboard starts moving; liftPx is its height above the navigation bar.
   window.__zwKeyboard = function (opening, liftPx, ms, startedAt) {
     var rec = { ms: ms, startedAt: startedAt };
-    if (!opening) {
-      // The resize that starts the slide down may come just before or after this call.
-      window.__zwKeyboardClosing = rec;
+    var view = chatToSlide();
+    window.__zwKeyboardOpen = opening;
+    if (opening) {
+      if (view) slideChat(view, 0, -liftPx / devicePixelRatio, ms, sinceStart(rec));
       return;
     }
-    var view = chatToSlide();
-    if (view) slideChat(view, 0, -liftPx / devicePixelRatio, ms, sinceStart(rec));
+    if (view && view.__zwKeyboardLifting) {
+      // Closed before the WebView shrank (Back right as it opened): no resize will come, so slide
+      // down from where the chat is now.
+      window.__zwKeyboardClosing = null;
+      slideChat(view, slideOffset(view), 0, Math.max(KEYBOARD_CATCH_UP_MIN_MS, ms - sinceStart(rec)), 0);
+      return;
+    }
+    // Otherwise the resize that starts the slide down comes just before or after this call.
+    window.__zwKeyboardClosing = rec;
   };
 
   if (window.__zwKeyboardResize) window.removeEventListener('resize', window.__zwKeyboardResize);
@@ -803,7 +819,10 @@
     var sameWidth = innerWidth === last.width;
     window.__zwKeyboardSize = { width: innerWidth, height: innerHeight };
     var view = chatToSlide();
-    if (!view || !sameWidth) return;
+    if (!sameWidth) return;
+    if (grew < -KEYBOARD_MIN_PX) window.__zwKeyboardOpen = true;
+    else if (grew > KEYBOARD_MIN_PX) window.__zwKeyboardOpen = false;
+    if (!view) return;
     if (grew < -KEYBOARD_MIN_PX) {
       unslideChat(view); // keyboard up: the layout lifts the chat now
     } else if (grew > KEYBOARD_MIN_PX) {
@@ -837,8 +856,9 @@
 
   // Sending makes Zalo take the message box out and focus a new one ~25 ms later. With nothing
   // focused in between, Android starts closing the keyboard and opens it again: it dips. When the
-  // box loses the focus to nothing right after a tap in the composer, a hidden stand-in field
-  // holds the focus, and the keyboard, until Zalo focuses the new box (or KEEPER_MS passes).
+  // box loses the focus to nothing right after a tap in the composer while the keyboard is open,
+  // a hidden stand-in field holds the focus, and the keyboard, until Zalo focuses the new box (or
+  // KEEPER_MS passes). With the keyboard closed, it stays closed.
   var KEEPER_MS = 400;
   var COMPOSER_TAP_MS = 1000;
 
@@ -867,7 +887,7 @@
   window.__zwHoldKeyboard = function (ev) {
     var row = document.getElementById('chat-box-input-container-id');
     if (ev.relatedTarget || !row || !row.contains(ev.target) || !editableOf(ev.target) ||
-        !root.classList.contains('zw-skin') ||
+        !root.classList.contains('zw-skin') || !window.__zwKeyboardOpen ||
         Date.now() - (window.__zwComposerTapAt || 0) > COMPOSER_TAP_MS) return;
     var keeper = keyboardKeeper();
     window.__zwFocusAllowedUntil = Date.now() + KEEPER_MS; // past the "no surprise keyboard" guard
@@ -889,7 +909,7 @@
   // Only allow focusing a text field when:
   //  - the user just touched it or right next to it (Zalo's editor only turns contenteditable on
   //    while focused, so the touch lands on a child or sibling), or anywhere in the composer row
-  //    for the message box (Zalo putting the focus back after Send),
+  //    for the message box while the keyboard is open (Zalo putting the focus back after Send),
   //  - it is the same field that lost focus a moment ago (Zalo restoring focus after Send), or
   //  - the browser is giving focus back to it after the app/window was away (dialogs, app switch), or
   //  - a swipe-to-reply just asked for it (window.__zwFocusAllowedUntil).
@@ -905,7 +925,8 @@
 
   function touchedNear(field) {
     if (!lastDown || Date.now() - lastDownAt > FOCUS_GRACE_MS) return false;
-    var composer = lastDownInComposer && document.getElementById('chat-box-input-container-id');
+    var composer = lastDownInComposer && window.__zwKeyboardOpen &&
+      document.getElementById('chat-box-input-container-id');
     if (composer && composer.contains(field)) return true;
     for (var n = lastDown, i = 0; n && i <= NEAR_LEVELS; n = n.parentElement, i++) {
       if (n.contains(field)) return true;
