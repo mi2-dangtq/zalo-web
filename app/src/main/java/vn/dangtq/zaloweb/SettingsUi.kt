@@ -3,6 +3,7 @@ package vn.dangtq.zaloweb
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.InputType
@@ -46,6 +47,11 @@ class Prefs(context: Context) {
     var fabY: Float
         get() = sp.getFloat("fab_y", -1f)
         set(value) = sp.edit().putFloat("fab_y", value).apply()
+
+    /** Zalo's last page background (light or dark theme), reused for the splash on the next launch. */
+    var pageColor: Int
+        get() = sp.getInt("page_color", Color.WHITE)
+        set(value) = sp.edit().putInt("page_color", value).apply()
 }
 
 class SettingsUi(private val activity: MainActivity, private val root: FrameLayout) {

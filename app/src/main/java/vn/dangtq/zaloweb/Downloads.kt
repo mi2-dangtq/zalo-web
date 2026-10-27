@@ -171,6 +171,12 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
         fun ready() {
             activity.runOnUiThread { activity.hideSplash() }
         }
+
+        /** inject.js reports Zalo's page background ("#rrggbb") whenever its light/dark theme changes. */
+        @JavascriptInterface
+        fun pageColor(color: String) {
+            activity.runOnUiThread { activity.setPageColor(color) }
+        }
     }
 
     /** MediaStore renames duplicates ("x (1).jpg"), so read back the name it actually used. */

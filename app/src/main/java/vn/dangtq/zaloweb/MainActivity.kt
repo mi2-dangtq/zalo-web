@@ -97,7 +97,7 @@ class MainActivity : Activity() {
 
         val root = FrameLayout(this)
         rootLayout = root
-        rootBackground = RootBackground(getColor(R.color.background))
+        rootBackground = RootBackground(prefs.pageColor)
         root.background = rootBackground
         webView = WebView(this)
         root.addView(
@@ -106,7 +106,7 @@ class MainActivity : Activity() {
         )
         setContentView(root)
         setupEdgeToEdge(root)
-        applyStatusBarStyle()
+        applySystemBarStyle()
 
         downloads = Downloads(this)
         configureWebView()
@@ -196,27 +196,47 @@ class MainActivity : Activity() {
 
     fun applySettings() {
         webView.settings.textZoom = prefs.textZoom
-        applyStatusBarStyle()
+        applySystemBarStyle()
         injectAll()
     }
 
-    /** The phone skin has blue headers: paint the status bar area blue too, with white icons. */
+    /** inject.js reports Zalo's page background whenever its light/dark theme changes. */
+    fun setPageColor(css: String) {
+        val color = try {
+            Color.parseColor(css)
+        } catch (e: IllegalArgumentException) {
+            return
+        }
+        if (color == prefs.pageColor) return
+        prefs.pageColor = color
+        applySystemBarStyle()
+    }
+
+    /**
+     * Bar areas follow the page: its background (light or dark theme) behind the navigation bar,
+     * and with the phone skin's blue headers, a blue status bar band with white icons.
+     */
     @Suppress("DEPRECATION")
-    private fun applyStatusBarStyle() {
+    private fun applySystemBarStyle() {
         val blue = prefs.mobileLayout
+        val darkPage = Color.luminance(prefs.pageColor) < 0.5f
+        rootBackground.baseColor = prefs.pageColor
         rootBackground.bandColor = if (blue) getColor(R.color.skin_header) else Color.TRANSPARENT
+        val lightStatus = !blue && !darkPage
+        val lightNav = !darkPage
         if (Build.VERSION.SDK_INT >= 30) {
             window.insetsController?.setSystemBarsAppearance(
-                if (blue) 0 else WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
-                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+                (if (lightStatus) WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0) or
+                    (if (lightNav) WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS else 0),
+                WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+                    WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
             )
         } else {
-            val flags = rootLayout.systemUiVisibility
-            rootLayout.systemUiVisibility = if (blue) {
-                flags and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv()
-            } else {
-                flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-            }
+            var flags = rootLayout.systemUiVisibility and
+                (View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR).inv()
+            if (lightStatus) flags = flags or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            if (lightNav) flags = flags or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            rootLayout.systemUiVisibility = flags
         }
     }
 
@@ -542,7 +562,7 @@ class MainActivity : Activity() {
         val view = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setBackgroundColor(getColor(R.color.background))
+            setBackgroundColor(prefs.pageColor)
             isClickable = true
             addView(icon, LinearLayout.LayoutParams(dp(96), dp(96)))
             addView(progress, LinearLayout.LayoutParams(dp(28), dp(28)).apply { topMargin = dp(40) })
@@ -601,8 +621,16 @@ class MainActivity : Activity() {
 }
 
 /** Window background: the page colour plus an optional band behind the status bar. */
-private class RootBackground(private val baseColor: Int) : Drawable() {
+private class RootBackground(initialColor: Int) : Drawable() {
     private val paint = Paint()
+
+    var baseColor = initialColor
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidateSelf()
+            }
+        }
 
     var bandHeight = 0
         set(value) {

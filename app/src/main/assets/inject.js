@@ -151,7 +151,9 @@
   window.__zwSyncOpening = function () {
     var el = document.getElementById('zw-opening');
     if (!el) return;
-    if (document.querySelector('.conv-back-btn') || Date.now() - el.__zwShownAt > OPENING_MAX_MS) {
+    // Zalo's chat view (header) is mounted, or nothing opened in time.
+    if (document.querySelector('#chatViewContainer #header') ||
+        Date.now() - el.__zwShownAt > OPENING_MAX_MS) {
       window.__zwHideOpening();
     }
   };
@@ -198,7 +200,9 @@
   if (!window.__zwOpeningInstalled) {
     window.__zwOpeningInstalled = true;
     document.addEventListener('click', function (ev) {
-      if (!root.classList.contains('zw-skin') || document.querySelector('.conv-back-btn')) return;
+      // Only in the single-pane layout: at 1000/1200px the chat opens beside the list.
+      if (!root.classList.contains('zw-skin') || !document.querySelector('#sidebarNav.compact-mode') ||
+          document.querySelector('.conv-back-btn')) return;
       var target = ev.target;
       if (!target || !target.closest) return;
       var item = target.closest('#conversationListId .conv-item');
@@ -207,6 +211,33 @@
       showOpening(item);
     }, true);
   }
+
+  // ---------------------------------------------------------------- Page colour (MainActivity.setPageColor)
+
+  // The app paints the area behind the navigation bar (and the next launch's splash) in Zalo's page
+  // colour, which follows Zalo's light/dark theme. The theme flips classes on <body>, so the colour is
+  // only re-read when the classes change.
+  window.__zwReportPageColor = function () {
+    var body = document.body;
+    var key = location.hostname + '|' + root.className + '|' + (body ? body.className : '');
+    if (window.__zwPageColorKey === key) return;
+    window.__zwPageColorKey = key;
+    var raw = location.hostname !== 'chat.zalo.me' ? '#ffffff'
+      : body ? getComputedStyle(body).getPropertyValue('--layer-background').trim() : '';
+    if (!raw) {
+      window.__zwPageColorKey = null; // Zalo's stylesheet isn't loaded yet: try again on the next change
+      return;
+    }
+    // A canvas normalises any CSS colour ("#fff", "rgb(...)") to "#rrggbb".
+    var ctx = window.__zwColorCtx || (window.__zwColorCtx = document.createElement('canvas').getContext('2d'));
+    ctx.fillStyle = '#000000';
+    ctx.fillStyle = raw;
+    var color = ctx.fillStyle;
+    if (!/^#[0-9a-f]{6}$/i.test(color) || color === window.__zwPageColor) return;
+    window.__zwPageColor = color;
+    try { bridge.pageColor(color); } catch (e) { /* not running inside the app */ }
+  };
+  window.__zwReportPageColor();
 
   // Zalo re-renders the composer per conversation and updates tab badges/selection in place:
   // re-add the "⋯" button and refresh the tab bar after DOM changes (at most once per frame).
@@ -220,6 +251,7 @@
         window.__zwEnsureToolsToggle();
         window.__zwRenderTabBar();
         window.__zwSyncOpening();
+        window.__zwReportPageColor();
       });
     });
     window.__zwSkinObserver.observe(document.body, {
@@ -323,6 +355,17 @@
       // box would also keep the keyboard up.
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       searchClose.click();
+      return true;
+    }
+    // Side panels with their own X that ignore Escape, e.g. "Tìm kiếm trong trò chuyện"
+    // (.search-message-panel-compact.--show).
+    var panelClose = Array.prototype.filter.call(
+      document.querySelectorAll('#app .--show .fa-Close_24_Line, #app aside .fa-Close_24_Line'),
+      function (icon) { return isShown(icon); }
+    )[0];
+    if (panelClose) {
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      (panelClose.closest('.z--btn--v2') || panelClose).click();
       return true;
     }
     var infoToggle = document.querySelector('#header .fa-outline-right-bar-active');

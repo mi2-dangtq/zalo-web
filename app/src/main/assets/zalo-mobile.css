@@ -122,6 +122,15 @@ html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
   color: #0068ff;
 }
 
+/* ------------------------------------------------------------------ Larger text sizes */
+
+/* "Cỡ chữ" (WebView textZoom) scales fonts but not Zalo's fixed pixel heights, so at 110-150%
+   the chat-list name and preview lost their descenders. Let those lines grow; rows stay 70px. */
+#conversationListId .conv-item-title__name,
+#conversationListId .conv-item-body__main {
+  height: auto !important;
+}
+
 /* ------------------------------------------------------------------ Touch feedback */
 
 /* Native apps highlight what's under the finger right away (the default tap flash is off). */
@@ -299,11 +308,27 @@ aside.compact-chat-info .chat-info__header .z--btn--v2:hover {
   visibility: visible;
 }
 
-/* Composer: the message box becomes a rounded pill. */
+/* Composer: the message box becomes a rounded pill. Zalo's own 10px padding around it is
+   trimmed so the row stays ~50px tall, as before the pill. */
+#chat-input-container-id {
+  flex-wrap: nowrap !important;
+  align-items: flex-end !important;
+  padding: 7px 8px !important;
+}
+
+/* A multi-line message keeps emoji / send on its row, aligned to the bottom like the phone app,
+   instead of wrapping them onto a line of their own (the outer row is bottom-aligned below). */
+#chat-input-container-id .chat-input-container__right-layout {
+  flex: none !important;
+}
+
 #chat-input-container-id .chat-input-container__left-layout {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: auto !important;
   height: auto !important;
   min-height: 36px;
-  margin: 7px 0;
+  margin: 0;
   padding: 7px 14px !important;
   border-radius: 18px !important;
   background: var(--layer-background-subtle, #f1f2f4) !important;
@@ -323,7 +348,7 @@ aside.compact-chat-info .chat-info__header .z--btn--v2:hover {
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: wrap !important;
-  align-items: center !important;
+  align-items: flex-end !important;
   border-top: 0.5px solid var(--border, #e1e4e8);
   background: var(--layer-background, #fff);
 }
