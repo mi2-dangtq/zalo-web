@@ -4,9 +4,11 @@ import android.app.DownloadManager
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Base64
+import android.view.HapticFeedbackConstants
 import android.webkit.CookieManager
 import android.webkit.DownloadListener
 import android.webkit.JavascriptInterface
@@ -176,6 +178,17 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
         @JavascriptInterface
         fun pageColor(color: String) {
             activity.runOnUiThread { activity.setPageColor(color) }
+        }
+
+        /** inject.js: the tick a swipe gives once letting go will reply / go back. */
+        @JavascriptInterface
+        fun haptic() {
+            activity.runOnUiThread {
+                activity.webView.performHapticFeedback(
+                    if (Build.VERSION.SDK_INT >= 34) HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE
+                    else HapticFeedbackConstants.CONTEXT_CLICK
+                )
+            }
         }
     }
 

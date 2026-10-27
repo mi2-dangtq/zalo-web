@@ -322,13 +322,59 @@ aside.compact-chat-info .chat-info__header .z--btn--v2:hover {
 }
 
 /* The empty 👍 button sat on every bubble; show it only on the message you tap (sticky hover),
-   like the reply / forward buttons. Buttons that already carry reactions stay visible. */
+   like the reply / forward buttons. Buttons that already carry reactions stay visible. Not while
+   a finger is on the message for a swipe (html.zw-swiping, see inject.js). */
 #messageViewScroll .message-reaction-container:has(.default-react-icon-thumb) {
   visibility: hidden;
 }
 
-#messageViewScroll .chat-message:hover .message-reaction-container {
+html:not(.zw-swiping) #messageViewScroll .chat-message:hover .message-reaction-container {
   visibility: visible;
+}
+
+/* ------------------------------------------------------------------ Swipe gestures in a chat */
+
+/* Vertical drags keep scrolling natively; horizontal ones are left to inject.js (swipe a message
+   left to reply, the background left to go back). Set on the scroller itself
+   (#messageViewContainer > .transform-gpu): it also covers the empty space above a short chat. */
+#messageViewContainer > div {
+  touch-action: pan-y pinch-zoom;
+}
+
+/* The message eases back into place after a swipe. */
+#messageViewScroll .zw-swipe-settle {
+  transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* A reply swipe hovers its message so Zalo renders the reply button; its toolbar stays hidden. */
+html.zw-swiping #messageViewScroll .MQA-container {
+  visibility: hidden !important;
+}
+
+/* Reply arrow beside the swiped message, or back chevron at the finger's height. */
+.zw-swipe-hint {
+  position: fixed;
+  right: 12px;
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font-size: 18px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.zw-swipe-hint i {
+  color: inherit !important;
+}
+
+.zw-swipe-hint--armed {
+  background: #0068ff;
 }
 
 /* Composer: the message box becomes a rounded pill. Zalo's own 10px padding around it is

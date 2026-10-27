@@ -420,6 +420,194 @@
     return false;
   };
 
+  // ---------------------------------------------------------------- Swipe left in a chat
+
+  // Phone-app gestures in an open conversation (skin on): swipe a message to the left to reply to
+  // it, swipe the background to the left to go back. zalo-mobile.css gives the message list
+  // "touch-action: pan-y", so vertical drags still scroll natively (and end here in pointercancel)
+  // while horizontal drags are left to this code. The message follows the finger; a hint circle
+  // (reply arrow beside the message, or back chevron at the finger's height) fills in, and turns
+  // blue with a haptic tick once letting go will act.
+  var SWIPE_SLOP_PX = 10;
+  var SWIPE_REPLY_PX = 56;
+  var SWIPE_BACK_PX = 72;
+  var SWIPE_SETTLE_MS = 200; // .zw-swipe-settle in zalo-mobile.css
+  var SWIPE_FOCUS_MS = 1000;
+  var REPLY_WAIT_MS = 600;
+  var UNHOVER_MS = 300;
+  var BUBBLE = '[id^="message-frame_"]';
+  var swipe = null;
+
+  // Zalo renders a message's quick actions (Trả lời / Chia sẻ / Thêm) only while the mouse is
+  // over it, 0.1-0.2 s after mouseover. So a reply swipe "hovers" its message as soon as it starts,
+  // and the reply button is there by the time the finger lets go. html.zw-swiping keeps that
+  // toolbar (and the 👍 the finger's :hover shows) invisible until Zalo has taken it down again.
+  function hoverMessage(bubble, on) {
+    clearTimeout(window.__zwUnhoverTimer);
+    if (on) root.classList.add('zw-swiping');
+    bubble.dispatchEvent(new MouseEvent(on ? 'mouseover' : 'mouseout', {
+      bubbles: true, cancelable: true, composed: true, view: window,
+      relatedTarget: on ? null : document.body
+    }));
+    if (!on) {
+      window.__zwUnhoverTimer = setTimeout(function () { root.classList.remove('zw-swiping'); }, UNHOVER_MS);
+    }
+  }
+
+  function replyButton(row) {
+    var icon = row.querySelector('.MSABtn-btn .fa-Quote_24_Filled');
+    return icon && icon.closest('.MSABtn-btn');
+  }
+
+  function reply(s) {
+    var since = Date.now();
+    (function attempt() {
+      var btn = s.row.isConnected && replyButton(s.row);
+      if (!btn && Date.now() - since < REPLY_WAIT_MS) {
+        setTimeout(attempt, 20);
+        return;
+      }
+      if (btn) {
+        // Zalo then focuses the message box; let it, so the keyboard opens as in the app
+        // (see "No surprise keyboard" below).
+        window.__zwFocusAllowedUntil = Date.now() + SWIPE_FOCUS_MS;
+        btn.click();
+      }
+      hoverMessage(s.bubble, false);
+    })();
+  }
+
+  function swipeHint(back) {
+    var el = document.createElement('div');
+    el.className = 'zw-swipe-hint';
+    var icon = document.createElement('i');
+    icon.className = back ? 'fa fa-icon-solid-left' : 'fa fa-Quote_24_Filled';
+    el.appendChild(icon);
+    document.body.appendChild(el);
+    return el;
+  }
+
+  // A touch that never became a swipe: a tap, a scroll, a drag to the right.
+  function dropSwipe(s) {
+    swipe = null;
+    if (s.reply) root.classList.remove('zw-swiping');
+  }
+
+  function endSwipe(act) {
+    var s = swipe;
+    if (!s) return;
+    if (!s.started) {
+      dropSwipe(s);
+      return;
+    }
+    swipe = null;
+    s.hint.remove();
+    if (s.row) {
+      var row = s.row;
+      row.classList.add('zw-swipe-settle');
+      row.style.transform = '';
+      setTimeout(function () { row.classList.remove('zw-swipe-settle'); }, SWIPE_SETTLE_MS);
+    }
+    if (s.reply) {
+      if (act && s.armed) reply(s); else hoverMessage(s.bubble, false);
+    } else if (act && s.armed && window.__zwBack) {
+      window.__zwBack();
+    }
+  }
+
+  var swipeHandlers = {};
+
+  swipeHandlers.pointerdown = function (ev) {
+    endSwipe(false);
+    if (ev.pointerType !== 'touch' || !ev.isPrimary || !root.classList.contains('zw-skin')) return;
+    var target = ev.target;
+    if (!target || !target.closest || !target.closest('#messageViewContainer') ||
+        !document.querySelector('#chatViewContainer .conv-back-btn')) return;
+    var bubble = target.closest(BUBBLE);
+    var row = bubble && bubble.closest('.chat-message');
+    if (row) {
+      clearTimeout(window.__zwUnhoverTimer);
+      root.classList.add('zw-swiping');
+    }
+    swipe = {
+      id: ev.pointerId, x: ev.clientX, y: ev.clientY, target: target, bubble: row ? bubble : null,
+      row: row, reply: !!row, started: false, armed: false
+    };
+  };
+
+  swipeHandlers.pointermove = function (ev) {
+    var s = swipe;
+    if (!s || ev.pointerId !== s.id) return;
+    var dx = ev.clientX - s.x;
+    var dy = ev.clientY - s.y;
+    if (!s.started) {
+      if (Math.abs(dx) < SWIPE_SLOP_PX && Math.abs(dy) < SWIPE_SLOP_PX) return;
+      if (dx > -SWIPE_SLOP_PX || Math.abs(dy) > Math.abs(dx)) {
+        dropSwipe(s); // rightwards or mostly vertical: not ours
+        return;
+      }
+      s.started = true;
+      s.x = ev.clientX; // count from here, so the message doesn't jump by the slop
+      // The finger now drags rather than rests on what it touched: Zalo shows some hints while a
+      // finger is down (e.g. "Đã có trên Cloud" on a file) and hides them on touchend.
+      try {
+        var touch = new Touch({ identifier: ev.pointerId, target: s.target, clientX: ev.clientX, clientY: ev.clientY });
+        s.target.dispatchEvent(new TouchEvent('touchend', {
+          bubbles: true, cancelable: true, composed: true, view: window,
+          touches: [], targetTouches: [], changedTouches: [touch]
+        }));
+      } catch (e) { /* no Touch constructor */ }
+      s.hint = swipeHint(!s.reply);
+      var y = ev.clientY;
+      if (s.reply) {
+        hoverMessage(s.bubble, true);
+        // Level with the middle of the bubble's visible part.
+        var r = s.bubble.getBoundingClientRect();
+        y = (Math.max(r.top, 56) + Math.min(r.bottom, innerHeight - 56)) / 2;
+      }
+      s.hint.style.top = Math.round(y - 18) + 'px';
+      dx = 0;
+    }
+    var limit = s.reply ? SWIPE_REPLY_PX : SWIPE_BACK_PX;
+    var pull = Math.max(0, -dx);
+    // Past the point where it acts, the message keeps following at a third of the speed.
+    var offset = pull <= limit ? pull : limit + (pull - limit) / 3;
+    var progress = Math.min(1, pull / limit);
+    if (s.reply) {
+      s.row.style.transform = 'translateX(' + (-offset) + 'px)';
+      s.hint.style.transform = 'scale(' + (0.5 + progress / 2) + ')';
+    } else {
+      s.hint.style.transform = 'translateX(' + Math.round((1 - progress) * 48) + 'px)';
+    }
+    s.hint.style.opacity = String(progress);
+    var armed = pull >= limit;
+    if (armed !== s.armed) {
+      s.armed = armed;
+      s.hint.classList.toggle('zw-swipe-hint--armed', armed);
+      if (armed) {
+        try { bridge.haptic(); } catch (e) { /* older app or not running inside it */ }
+      }
+    }
+  };
+
+  swipeHandlers.pointerup = function (ev) {
+    if (swipe && ev.pointerId === swipe.id) endSwipe(true);
+  };
+
+  swipeHandlers.pointercancel = function (ev) {
+    if (swipe && ev.pointerId === swipe.id) endSwipe(false);
+  };
+
+  // On document, capture phase. Replaced on every injection, like the opening click above.
+  var oldSwipeHandlers = window.__zwSwipeHandlers || {};
+  Object.keys(oldSwipeHandlers).forEach(function (type) {
+    document.removeEventListener(type, oldSwipeHandlers[type], true);
+  });
+  window.__zwSwipeHandlers = swipeHandlers;
+  Object.keys(swipeHandlers).forEach(function (type) {
+    document.addEventListener(type, swipeHandlers[type], true);
+  });
+
   // ---------------------------------------------------------------- Hooks below install once per page
 
   if (window.__zwHooked) return;
@@ -432,7 +620,8 @@
   //  - the user just touched it or right next to it (Zalo's editor only turns contenteditable on
   //    while focused, so the touch lands on a child or sibling),
   //  - it is the same field that lost focus a moment ago (Zalo restoring focus after Send), or
-  //  - the browser is giving focus back to it after the app/window was away (dialogs, app switch).
+  //  - the browser is giving focus back to it after the app/window was away (dialogs, app switch), or
+  //  - a swipe-to-reply just asked for it (window.__zwFocusAllowedUntil).
   var FOCUS_GRACE_MS = 1000;
   var NEAR_LEVELS = 4;
   var lastDown = null;
@@ -476,7 +665,7 @@
     var returning = !!awayElement && (awayElement === ev.target || awayElement.contains(field) ||
       field.contains(awayElement));
     awayElement = null;
-    if (returning || touchedNear(field) ||
+    if (returning || touchedNear(field) || Date.now() < (window.__zwFocusAllowedUntil || 0) ||
         (field === lastField && Date.now() - lastFieldBlurAt < FOCUS_GRACE_MS)) {
       return;
     }
