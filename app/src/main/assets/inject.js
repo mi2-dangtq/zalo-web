@@ -743,6 +743,77 @@
     document.addEventListener(type, swipeHandlers[type], true);
   });
 
+  // ---------------------------------------------------------------- Keyboard (MainActivity.KeyboardAnimation)
+
+  // The chat (Zalo's #chatView: messages + composer) slides with the keyboard, on the compositor,
+  // with the curve and duration Android gives the keyboard (InsetsController's synced IME
+  // animation). Opening: the WebView keeps its full height until the keyboard is up, so the chat
+  // slides up, then the WebView shrinks and the slide is dropped in that resize. Closing: the
+  // WebView grows at once, so the chat starts where it was and slides down. html.zw-keyboard keeps
+  // the header above the sliding chat.
+  var KEYBOARD_EASE = 'cubic-bezier(0.2, 0, 0, 1)';
+  var KEYBOARD_MS = 285;
+  var KEYBOARD_MIN_PX = 100; // smaller size changes are the keyboard's own (suggestion strip etc.)
+  var KEYBOARD_SAFETY_MS = 700; // opened but the WebView never shrank: drop the slide anyway
+
+  function chatToSlide() {
+    return root.classList.contains('zw-skin') ? document.getElementById('chatView') : null;
+  }
+
+  function unslideChat(view) {
+    clearTimeout(window.__zwKeyboardTimer);
+    if (view.__zwKeyboardSlide) view.__zwKeyboardSlide.cancel();
+    view.__zwKeyboardSlide = null;
+    root.classList.remove('zw-keyboard');
+  }
+
+  function slideChat(view, from, to, ms, elapsed) {
+    unslideChat(view);
+    root.classList.add('zw-keyboard');
+    view.__zwKeyboardSlide = view.animate(
+      [{ transform: 'translateY(' + from + 'px)' }, { transform: 'translateY(' + to + 'px)' }],
+      { duration: ms, delay: -elapsed, easing: KEYBOARD_EASE, fill: 'forwards' }
+    );
+    window.__zwKeyboardTimer = setTimeout(function () { unslideChat(view); },
+      ms - elapsed + (to ? KEYBOARD_SAFETY_MS : 0));
+  }
+
+  function sinceStart(rec) {
+    return Math.max(0, Math.min(rec.ms, Date.now() - rec.startedAt));
+  }
+
+  // Called by the app as the keyboard starts moving; liftPx is its height above the navigation bar.
+  window.__zwKeyboard = function (opening, liftPx, ms, startedAt) {
+    var rec = { ms: ms, startedAt: startedAt };
+    if (!opening) {
+      // The resize that starts the slide down may come just before or after this call.
+      window.__zwKeyboardClosing = rec;
+      return;
+    }
+    var view = chatToSlide();
+    if (view) slideChat(view, 0, -liftPx / devicePixelRatio, ms, sinceStart(rec));
+  };
+
+  if (window.__zwKeyboardResize) window.removeEventListener('resize', window.__zwKeyboardResize);
+  window.__zwKeyboardSize = window.__zwKeyboardSize || { width: innerWidth, height: innerHeight };
+  window.__zwKeyboardResize = function () {
+    var last = window.__zwKeyboardSize;
+    var grew = innerHeight - last.height;
+    var sameWidth = innerWidth === last.width;
+    window.__zwKeyboardSize = { width: innerWidth, height: innerHeight };
+    var view = chatToSlide();
+    if (!view || !sameWidth) return;
+    if (grew < -KEYBOARD_MIN_PX) {
+      unslideChat(view); // keyboard up: the layout lifts the chat now
+    } else if (grew > KEYBOARD_MIN_PX) {
+      var closing = window.__zwKeyboardClosing;
+      window.__zwKeyboardClosing = null;
+      if (closing && Date.now() - closing.startedAt > closing.ms) closing = null; // a stale one
+      slideChat(view, -grew, 0, closing ? closing.ms : KEYBOARD_MS, closing ? sinceStart(closing) : 0);
+    }
+  };
+  window.addEventListener('resize', window.__zwKeyboardResize);
+
   // ---------------------------------------------------------------- Hooks below install once per page
 
   if (window.__zwHooked) return;

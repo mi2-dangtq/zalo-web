@@ -422,6 +422,12 @@ html.zw-back #zw-tabbar {
   pointer-events: none;
 }
 
+/* While the chat slides with the keyboard (inject.js), it passes under the header. */
+html.zw-keyboard #chatViewContainer #header {
+  position: relative;
+  z-index: 2;
+}
+
 /* Letting go: the rest of the way out, or back into place. */
 html.zw-back-settle #container main,
 html.zw-back-settle #container #sidebarNav.compact-mode,

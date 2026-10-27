@@ -2,6 +2,7 @@ package vn.dangtq.zaloweb
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.annotation.TargetApi
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -21,6 +22,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.WindowInsetsController
 import android.webkit.CookieManager
 import android.webkit.MimeTypeMap
@@ -533,9 +535,8 @@ class MainActivity : Activity() {
         }
         root.setOnApplyWindowInsetsListener { v, insets ->
             if (Build.VERSION.SDK_INT >= 30) {
-                val bars = insets.getInsets(
-                    WindowInsets.Type.systemBars() or WindowInsets.Type.ime() or WindowInsets.Type.displayCutout()
-                )
+                val ime = if (deferKeyboardResize) 0 else WindowInsets.Type.ime()
+                val bars = insets.getInsets(WindowInsets.Type.systemBars() or ime or WindowInsets.Type.displayCutout())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)
                 rootBackground.bandHeight = bars.top
                 WindowInsets.CONSUMED
@@ -550,7 +551,61 @@ class MainActivity : Activity() {
                 insets.consumeSystemWindowInsets()
             }
         }
+        if (Build.VERSION.SDK_INT >= 30) root.setWindowInsetsAnimationCallback(KeyboardAnimation(root))
         root.requestApplyInsets()
+    }
+
+    /** A keyboard-opening animation is running: the WebView keeps its height until it ends. */
+    private var deferKeyboardResize = false
+
+    /**
+     * Keyboard and chat move together (phone skin). Android lays the window out for the keyboard's
+     * end state at once, so the WebView used to jump while the keyboard was still sliding in.
+     *  - Opening: the WebView keeps its full height until the keyboard is up, while the page slides
+     *    the chat (messages + composer) up with it; then the WebView shrinks and the page drops its
+     *    slide in that same frame.
+     *  - Closing: the WebView grows at once as before; the page slides the chat down from where it
+     *    was.
+     * The page (inject.js __zwKeyboard) animates on the compositor with the keyboard's own curve
+     * and duration, so it stays smooth while Zalo's JS is busy.
+     */
+    @TargetApi(30)
+    private inner class KeyboardAnimation(private val root: View) :
+        WindowInsetsAnimation.Callback(WindowInsetsAnimation.Callback.DISPATCH_MODE_STOP) {
+        private var opening = false
+
+        private fun isKeyboard(animation: WindowInsetsAnimation) =
+            prefs.mobileLayout && animation.typeMask and WindowInsets.Type.ime() != 0
+
+        override fun onPrepare(animation: WindowInsetsAnimation) {
+            if (!isKeyboard(animation)) return
+            opening = root.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) != true
+            if (opening) deferKeyboardResize = true
+        }
+
+        override fun onStart(
+            animation: WindowInsetsAnimation,
+            bounds: WindowInsetsAnimation.Bounds
+        ): WindowInsetsAnimation.Bounds {
+            if (isKeyboard(animation)) {
+                val bars = root.rootWindowInsets?.getInsets(WindowInsets.Type.systemBars())?.bottom ?: 0
+                val lift = (bounds.upperBound.bottom - bars).coerceAtLeast(0)
+                webView.evaluateJavascript(
+                    "window.__zwKeyboard&&__zwKeyboard($opening,$lift,${animation.durationMillis},${System.currentTimeMillis()})",
+                    null
+                )
+            }
+            return bounds
+        }
+
+        override fun onProgress(insets: WindowInsets, running: MutableList<WindowInsetsAnimation>) = insets
+
+        override fun onEnd(animation: WindowInsetsAnimation) {
+            if (deferKeyboardResize && animation.typeMask and WindowInsets.Type.ime() != 0) {
+                deferKeyboardResize = false
+                root.requestApplyInsets()
+            }
+        }
     }
 
     // ---------------------------------------------------------------- Splash
