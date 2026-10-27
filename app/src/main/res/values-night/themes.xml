@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same window as the day theme. isLightTheme=false only tells WebView the phone is in dark
+         mode, so prefers-color-scheme (Zalo's "Hệ thống" theme) follows the phone. -->
+    <style name="AppTheme" parent="Base.AppTheme">
+        <item name="android:isLightTheme">false</item>
+    </style>
+</resources>
