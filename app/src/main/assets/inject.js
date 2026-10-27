@@ -111,7 +111,7 @@
         if (!tab) return;
         // "Tài liệu" opens the My Documents chat: slide the placeholder in first, as for a tap on a
         // chat-list row (see "Instant chat opening" below).
-        if (item.dataset.title === 'My Documents' && !document.querySelector('.conv-back-btn')) {
+        if (item.dataset.title === 'My Documents' && !chatOpen()) {
           window.__zwOpenBehindPlaceholder('My Documents', function () { tab.click(); });
           return;
         }
@@ -167,6 +167,11 @@
   // while Zalo works. The tap is then replayed to Zalo. The placeholder fades out once the slide is over and Zalo's chat view is
   // mounted, or after OPENING_MAX_MS if the tap didn't open anything.
   var OPENING_MAX_MS = 2500;
+
+  // A conversation is open (the Danh bạ pages have a back button too, to Zalo's menu of them).
+  function chatOpen() {
+    return !!document.querySelector('.conv-back-btn:not(.contact-pages .conv-back-btn)');
+  }
   var OPENING_SLIDE_MS = 160; // zw-slide-in in zalo-mobile.css
 
   window.__zwHideOpening = function () {
@@ -408,7 +413,7 @@
   // Returns true when something inside Zalo was closed.
   window.__zwBack = function () {
     // A chat is still opening behind the placeholder: cancel the placeholder, stay in the app.
-    if (document.getElementById('zw-opening') && !document.querySelector('.conv-back-btn')) {
+    if (document.getElementById('zw-opening') && !chatOpen()) {
       if (window.__zwCancelOpening) window.__zwCancelOpening();
       return true;
     }
