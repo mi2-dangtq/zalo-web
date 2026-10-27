@@ -819,6 +819,22 @@
   };
   window.addEventListener('resize', window.__zwKeyboardResize);
 
+  // ---------------------------------------------------------------- Keep typing after Send
+
+  // A tap on a composer button while typing (Gửi, the quick 👍, formatting) keeps the focus, and
+  // so the keyboard, in the message box, as in the phone app. By default the tap moves the focus
+  // to the chat and the keyboard closes. The emoji button still lets go, so its panel takes the
+  // keyboard's place. On window, capture phase; replaced on every injection.
+  if (window.__zwKeepFocus) window.removeEventListener('mousedown', window.__zwKeepFocus, true);
+  window.__zwKeepFocus = function (ev) {
+    var row = document.getElementById('chat-input-container-id');
+    var btn = ev.target && ev.target.closest && ev.target.closest('#chat-input-container-id .z--btn--v2');
+    var field = editableOf(document.activeElement);
+    if (!btn || !field || !row.contains(field) || btn.querySelector('.fa-Emoji_24_Line')) return;
+    ev.preventDefault();
+  };
+  window.addEventListener('mousedown', window.__zwKeepFocus, true);
+
   // ---------------------------------------------------------------- Hooks below install once per page
 
   if (window.__zwHooked) return;
@@ -829,7 +845,8 @@
   // Zalo focuses the message box whenever a chat opens; on a phone that pops the keyboard.
   // Only allow focusing a text field when:
   //  - the user just touched it or right next to it (Zalo's editor only turns contenteditable on
-  //    while focused, so the touch lands on a child or sibling),
+  //    while focused, so the touch lands on a child or sibling), or anywhere in the composer row
+  //    for the message box (Zalo putting the focus back after Send),
   //  - it is the same field that lost focus a moment ago (Zalo restoring focus after Send), or
   //  - the browser is giving focus back to it after the app/window was away (dialogs, app switch), or
   //  - a swipe-to-reply just asked for it (window.__zwFocusAllowedUntil).
@@ -844,6 +861,8 @@
 
   function touchedNear(field) {
     if (!lastDown || Date.now() - lastDownAt > FOCUS_GRACE_MS) return false;
+    var row = lastDown.closest && lastDown.closest('#chat-box-input-container-id');
+    if (row && row.contains(field)) return true;
     for (var n = lastDown, i = 0; n && i <= NEAR_LEVELS; n = n.parentElement, i++) {
       if (n.contains(field)) return true;
     }
