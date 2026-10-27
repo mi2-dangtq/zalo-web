@@ -835,6 +835,49 @@
   };
   window.addEventListener('mousedown', window.__zwKeepFocus, true);
 
+  // Sending makes Zalo take the message box out and focus a new one ~25 ms later. With nothing
+  // focused in between, Android starts closing the keyboard and opens it again: it dips. When the
+  // box loses the focus to nothing right after a tap in the composer, a hidden stand-in field
+  // holds the focus, and the keyboard, until Zalo focuses the new box (or KEEPER_MS passes).
+  var KEEPER_MS = 400;
+  var COMPOSER_TAP_MS = 1000;
+
+  function keyboardKeeper() {
+    var keeper = document.getElementById('zw-keyboard-keeper');
+    if (!keeper) {
+      keeper = document.createElement('textarea');
+      keeper.id = 'zw-keyboard-keeper';
+      keeper.tabIndex = -1;
+      keeper.setAttribute('aria-hidden', 'true');
+      keeper.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:1px;padding:0;' +
+        'border:0;opacity:0;pointer-events:none;resize:none';
+      document.body.appendChild(keeper);
+    }
+    return keeper;
+  }
+
+  if (window.__zwComposerTap) window.removeEventListener('pointerdown', window.__zwComposerTap, true);
+  window.__zwComposerTap = function (ev) {
+    var inComposer = ev.target && ev.target.closest && ev.target.closest('#chat-box-input-container-id');
+    window.__zwComposerTapAt = inComposer ? Date.now() : 0;
+  };
+  window.addEventListener('pointerdown', window.__zwComposerTap, true);
+
+  if (window.__zwHoldKeyboard) document.removeEventListener('focusout', window.__zwHoldKeyboard, true);
+  window.__zwHoldKeyboard = function (ev) {
+    var row = document.getElementById('chat-box-input-container-id');
+    if (ev.relatedTarget || !row || !row.contains(ev.target) || !editableOf(ev.target) ||
+        !root.classList.contains('zw-skin') ||
+        Date.now() - (window.__zwComposerTapAt || 0) > COMPOSER_TAP_MS) return;
+    var keeper = keyboardKeeper();
+    window.__zwFocusAllowedUntil = Date.now() + KEEPER_MS; // past the "no surprise keyboard" guard
+    keeper.focus({ preventScroll: true });
+    setTimeout(function () {
+      if (document.activeElement === keeper) keeper.blur();
+    }, KEEPER_MS);
+  };
+  document.addEventListener('focusout', window.__zwHoldKeyboard, true);
+
   // ---------------------------------------------------------------- Hooks below install once per page
 
   if (window.__zwHooked) return;
