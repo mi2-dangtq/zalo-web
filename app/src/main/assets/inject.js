@@ -465,6 +465,7 @@
       var now = Date.now();
       if (now - backState.lastChatClose > CHAT_CLOSE_MS) {
         backState.lastChatClose = now;
+        window.__zwClosingChatAt = now;
         leaveListRows();
         convBack.click();
       }
@@ -599,8 +600,12 @@
         finishBack();
         return;
       }
-      backState.lastChatClose = Date.now(); // a Back press right after doesn't close it twice
-      btn.click();
+      // A Back press during the slide may have started closing it already.
+      if (Date.now() - backState.lastChatClose > CHAT_CLOSE_MS) {
+        backState.lastChatClose = Date.now(); // a Back press right after doesn't close it twice
+        window.__zwClosingChatAt = Date.now();
+        btn.click();
+      }
       var since = Date.now();
       (function waitForList() {
         if (document.querySelector('#chatViewContainer .conv-back-btn') &&
@@ -795,9 +800,10 @@
   window.__zwKeyboard = function (opening, liftPx, ms, startedAt) {
     var rec = { ms: ms, startedAt: startedAt };
     var view = chatToSlide();
-    window.__zwKeyboardOpen = opening;
     if (opening) {
-      if (view) slideChat(view, 0, -liftPx / devicePixelRatio, ms, sinceStart(rec));
+      // Reopened while still sliding down: carry on from where the chat is.
+      var from = view && view.__zwKeyboardSlide ? slideOffset(view) : 0;
+      if (view) slideChat(view, from, -liftPx / devicePixelRatio, ms, sinceStart(rec));
       return;
     }
     if (view && view.__zwKeyboardLifting) {
@@ -819,10 +825,7 @@
     var sameWidth = innerWidth === last.width;
     window.__zwKeyboardSize = { width: innerWidth, height: innerHeight };
     var view = chatToSlide();
-    if (!sameWidth) return;
-    if (grew < -KEYBOARD_MIN_PX) window.__zwKeyboardOpen = true;
-    else if (grew > KEYBOARD_MIN_PX) window.__zwKeyboardOpen = false;
-    if (!view) return;
+    if (!view || !sameWidth) return;
     if (grew < -KEYBOARD_MIN_PX) {
       unslideChat(view); // keyboard up: the layout lifts the chat now
     } else if (grew > KEYBOARD_MIN_PX) {
@@ -854,13 +857,14 @@
   };
   window.addEventListener('mousedown', window.__zwKeepFocus, true);
 
-  // Sending makes Zalo take the message box out and focus a new one ~25 ms later. With nothing
-  // focused in between, Android starts closing the keyboard and opens it again: it dips. When the
-  // box loses the focus to nothing right after a tap in the composer while the keyboard is open,
-  // a hidden stand-in field holds the focus, and the keyboard, until Zalo focuses the new box (or
-  // KEEPER_MS passes). With the keyboard closed, it stays closed.
+  // Sending (Gửi or Enter) makes Zalo take the message box out and focus a new one ~25 ms later.
+  // With nothing focused in between, Android starts closing the keyboard and opens it again: it
+  // dips. When the box loses the focus to nothing right after the composer was used (a tap or a
+  // key) while the keyboard is open (__zwKeyboardOpen, kept by the app), a hidden stand-in field
+  // holds the focus, and the keyboard, until Zalo focuses the new box (or KEEPER_MS passes). With
+  // the keyboard closed it stays closed, and a chat being closed lets it go at once.
   var KEEPER_MS = 400;
-  var COMPOSER_TAP_MS = 1000;
+  var COMPOSER_USE_MS = 1000;
 
   function keyboardKeeper() {
     var keeper = document.getElementById('zw-keyboard-keeper');
@@ -876,19 +880,30 @@
     return keeper;
   }
 
+  // window.__zwComposerUsedAt: last tap or key in the composer (a tap elsewhere clears it); the
+  // "no surprise keyboard" guard below reads it too.
+  function inComposer(el) {
+    return !!(el && el.closest && el.closest('#chat-box-input-container-id'));
+  }
   if (window.__zwComposerTap) window.removeEventListener('pointerdown', window.__zwComposerTap, true);
   window.__zwComposerTap = function (ev) {
-    var inComposer = ev.target && ev.target.closest && ev.target.closest('#chat-box-input-container-id');
-    window.__zwComposerTapAt = inComposer ? Date.now() : 0;
+    window.__zwComposerUsedAt = inComposer(ev.target) ? Date.now() : 0;
   };
   window.addEventListener('pointerdown', window.__zwComposerTap, true);
+  if (window.__zwComposerKey) window.removeEventListener('keydown', window.__zwComposerKey, true);
+  window.__zwComposerKey = function (ev) {
+    if (inComposer(ev.target)) window.__zwComposerUsedAt = Date.now();
+  };
+  window.addEventListener('keydown', window.__zwComposerKey, true);
 
   if (window.__zwHoldKeyboard) document.removeEventListener('focusout', window.__zwHoldKeyboard, true);
   window.__zwHoldKeyboard = function (ev) {
     var row = document.getElementById('chat-box-input-container-id');
+    var now = Date.now();
     if (ev.relatedTarget || !row || !row.contains(ev.target) || !editableOf(ev.target) ||
         !root.classList.contains('zw-skin') || !window.__zwKeyboardOpen ||
-        Date.now() - (window.__zwComposerTapAt || 0) > COMPOSER_TAP_MS) return;
+        now - (window.__zwComposerUsedAt || 0) > COMPOSER_USE_MS ||
+        now - (window.__zwClosingChatAt || 0) < COMPOSER_USE_MS) return;
     var keeper = keyboardKeeper();
     window.__zwFocusAllowedUntil = Date.now() + KEEPER_MS; // past the "no surprise keyboard" guard
     keeper.focus({ preventScroll: true });
@@ -908,8 +923,9 @@
   // Zalo focuses the message box whenever a chat opens; on a phone that pops the keyboard.
   // Only allow focusing a text field when:
   //  - the user just touched it or right next to it (Zalo's editor only turns contenteditable on
-  //    while focused, so the touch lands on a child or sibling), or anywhere in the composer row
-  //    for the message box while the keyboard is open (Zalo putting the focus back after Send),
+  //    while focused, so the touch lands on a child or sibling),
+  //  - it is the message box, the composer was just used (a tap or a key) and the keyboard is open
+  //    (Zalo putting the focus on a new box after Gửi or Enter),
   //  - it is the same field that lost focus a moment ago (Zalo restoring focus after Send), or
   //  - the browser is giving focus back to it after the app/window was away (dialogs, app switch), or
   //  - a swipe-to-reply just asked for it (window.__zwFocusAllowedUntil).
@@ -917,7 +933,6 @@
   var NEAR_LEVELS = 4;
   var lastDown = null;
   var lastDownAt = 0;
-  var lastDownInComposer = false;
   var lastField = null;
   var lastFieldBlurAt = 0;
   var awayElement = null;
@@ -925,13 +940,16 @@
 
   function touchedNear(field) {
     if (!lastDown || Date.now() - lastDownAt > FOCUS_GRACE_MS) return false;
-    var composer = lastDownInComposer && window.__zwKeyboardOpen &&
-      document.getElementById('chat-box-input-container-id');
-    if (composer && composer.contains(field)) return true;
     for (var n = lastDown, i = 0; n && i <= NEAR_LEVELS; n = n.parentElement, i++) {
       if (n.contains(field)) return true;
     }
     return false;
+  }
+
+  function composerJustUsed(field) {
+    var composer = document.getElementById('chat-box-input-container-id');
+    return !!window.__zwKeyboardOpen && !!composer && composer.contains(field) &&
+      Date.now() - (window.__zwComposerUsedAt || 0) < FOCUS_GRACE_MS;
   }
 
   function editableOf(el) {
@@ -951,8 +969,6 @@
   document.addEventListener('pointerdown', function (ev) {
     lastDown = ev.target;
     lastDownAt = Date.now();
-    // Noted now: after Send, Zalo replaces what was touched (Gửi turns back into 👍).
-    lastDownInComposer = !!(ev.target.closest && ev.target.closest('#chat-box-input-container-id'));
     awayElement = null;
   }, true);
 
@@ -962,7 +978,8 @@
     var returning = !!awayElement && (awayElement === ev.target || awayElement.contains(field) ||
       field.contains(awayElement));
     awayElement = null;
-    if (returning || touchedNear(field) || Date.now() < (window.__zwFocusAllowedUntil || 0) ||
+    if (returning || touchedNear(field) || composerJustUsed(field) ||
+        Date.now() < (window.__zwFocusAllowedUntil || 0) ||
         (field === lastField && Date.now() - lastFieldBlurAt < FOCUS_GRACE_MS)) {
       return;
     }

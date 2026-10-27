@@ -196,7 +196,16 @@ class MainActivity : Activity() {
             .put("css", injectCss)
             .put("mobileCss", if (prefs.mobileLayout) mobileCss else "")
             .put("customCss", prefs.customCss)
-        webView.evaluateJavascript("window.__zwConfig=$config;\n$injectJs", null)
+        webView.evaluateJavascript("window.__zwConfig=$config;\nwindow.__zwKeyboardOpen=$keyboardOpen;\n$injectJs", null)
+    }
+
+    /** Whether the keyboard is shown, as the window insets say; mirrored to the page as __zwKeyboardOpen. */
+    private var keyboardOpen = false
+
+    private fun setKeyboardOpen(open: Boolean) {
+        if (open == keyboardOpen) return
+        keyboardOpen = open
+        if (::webView.isInitialized) webView.evaluateJavascript("window.__zwKeyboardOpen=$open", null)
     }
 
     fun applySettings() {
@@ -535,6 +544,7 @@ class MainActivity : Activity() {
         }
         root.setOnApplyWindowInsetsListener { v, insets ->
             if (Build.VERSION.SDK_INT >= 30) {
+                setKeyboardOpen(insets.isVisible(WindowInsets.Type.ime()))
                 val ime = if (deferKeyboardResize) 0 else WindowInsets.Type.ime()
                 val bars = insets.getInsets(WindowInsets.Type.systemBars() or ime or WindowInsets.Type.displayCutout())
                 v.setPadding(bars.left, bars.top, bars.right, bars.bottom)

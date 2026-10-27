@@ -175,19 +175,20 @@ html:has(#contact-search .z--btn--v2:not(.icon-only)) #zw-tabbar {
 /* ------------------------------------------------------------------ Instant chat opening */
 
 /* Placeholder that inject.js slides in the moment a conversation is tapped, covering the
-   0.2-0.9 s Zalo needs before its chat view appears. Click-through so it never eats a tap.
-   The page slides (transform/opacity only, so it keeps moving while Zalo's JS runs); the outer
-   element fades out, so the fade never fights the slide. */
+   0.2-0.9 s Zalo needs before its chat view appears. It takes taps meanwhile, so one meant for
+   the chat (its composer sits over the tab bar) doesn't switch tab or open another chat; once
+   fading out it lets them through. The page slides (transform/opacity only, so it keeps moving
+   while Zalo's JS runs); the outer element fades out, so the fade never fights the slide. */
 #zw-opening {
   position: fixed;
   inset: 0;
   z-index: 16;
-  pointer-events: none;
 }
 
 #zw-opening.zw-opening--done {
   opacity: 0;
   transition: opacity 0.12s linear;
+  pointer-events: none;
 }
 
 .zw-opening__page {
