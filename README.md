@@ -23,7 +23,8 @@ Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
   (kể cả file `blob:`/`data:` mà Zalo Web tạo rồi thu hồi ngay).
 - Gọi thoại/video: xin quyền camera/micro khi Zalo yêu cầu (chỉ cấp cho domain Zalo).
 - Nút Back như app: đóng popup/hộp thoại/trình xem ảnh → đóng khung thông tin → đóng cuộc
-  chat → về màn hình chính (Zalo Web không ghi lịch sử khi mở chat nên phải tự xử lý).
+  chat (trượt đi giống vuốt trong chat) → về màn hình chính (Zalo Web không ghi lịch sử khi mở
+  chat nên phải tự xử lý).
 - Mở app mượt: màn chờ có icon cho tới khi Zalo vẽ xong giao diện; không có hiệu ứng kéo quá
   đà ở cuối danh sách; giữ tay không bôi đen chữ/hiện thanh Sao chép (giữ tay lên tin nhắn
   vẫn mở menu tin nhắn của Zalo; ô nhập tin vẫn chọn chữ được).
@@ -51,7 +52,9 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
     9 công cụ (sticker, file, danh thiếp, định dạng…);
   - **vuốt trong cuộc chat**: vuốt sang phải ở bất kỳ đâu (tin nhắn, nền, header) thì trang chat
     trượt theo ngón tay, danh sách chat hiện bên dưới như app iOS; thả tay khi đã kéo quá ~1/3
-    màn hình (hoặc hất nhanh) thì đóng chat, chưa đủ thì trượt về. Vuốt một tin nhắn sang trái để
+    màn hình (hoặc hất nhanh) thì đóng chat, chưa đủ thì trượt về. Cử chỉ Back từ mép màn hình
+    (hoặc nút Back) đóng chat bằng đúng hiệu ứng trượt đó, chỉ là không theo tay vì HyperOS giữ
+    mép màn hình cho cử chỉ của nó và chỉ báo Back khi đã thả tay. Vuốt một tin nhắn sang trái để
     trả lời tin đó (mở luôn bàn phím; máy rung nhẹ khi đã kéo đủ xa). Cuộn lên xuống vẫn như cũ;
   - **bàn phím trượt cùng cuộc chat**: khi bàn phím mở/đóng, tin nhắn và ô soạn tin trượt theo nó
     (cùng đường cong và thời lượng của bàn phím) thay vì nhảy một phát;

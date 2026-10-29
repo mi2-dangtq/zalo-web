@@ -355,7 +355,7 @@
 
   // Zalo opens chats/panels without touching history, so Back must close them by hand:
   // popup/modal/viewer (Escape, then its close button) -> chat-list search -> conversation info
-  // panel -> conversation -> let Android decide.
+  // panel -> conversation (slides away as a swipe right does) -> let Android decide.
   // Closing a chat animates for ~0.9s with the back button still mounted; swallow repeats meanwhile.
   var CHAT_CLOSE_MS = 1500;
   var MIN_OVERLAY_PX = 8;
@@ -462,8 +462,10 @@
     }
     var convBack = document.querySelector('.conv-back-btn');
     if (isShown(convBack)) {
+      if (backSlide) return true; // already sliding away (a swipe let go, or the Back before)
       var now = Date.now();
-      if (now - backState.lastChatClose > CHAT_CLOSE_MS) {
+      // A chat leaves as a swipe right lets it go; the Danh bạ pages (same button) just close.
+      if (now - backState.lastChatClose > CHAT_CLOSE_MS && !(chatSlidable() && slideChatClosed())) {
         backState.lastChatClose = now;
         window.__zwClosingChatAt = now;
         leaveListRows();
@@ -479,7 +481,9 @@
   // Phone-app gestures in an open conversation (skin on):
   //  - swipe right anywhere in it (messages, background, header): the chat page follows the finger
   //    with the chat list underneath, as in the iOS / Telegram apps. Let go far or fast enough and
-  //    it slides away and the chat closes; otherwise it slides back.
+  //    it slides away and the chat closes; otherwise it slides back. Back (the edge gesture or the
+  //    Back button) plays the same slide-away without a finger: HyperOS keeps the screen edges for
+  //    its own gesture and reports it only once the finger lifts, so that one can't follow it.
   //  - swipe a message left to reply to it: the message follows the finger, and a reply arrow
   //    beside it fills in and turns blue with a haptic tick once letting go will reply.
   // zalo-mobile.css gives those areas "touch-action: pan-y", so vertical drags still scroll
@@ -551,6 +555,12 @@
     return el;
   }
 
+  // A conversation is open with the skin on: the page that swipes and Back slide away.
+  function chatSlidable() {
+    return root.classList.contains('zw-skin') && !!document.getElementById('messageViewContainer') &&
+      !!document.querySelector('#chatViewContainer .conv-back-btn');
+  }
+
   // The chat page (Zalo's <main>) slides. Under it, the chat list (#sidebarNav, kept laid out but
   // hidden while a chat is open, see zalo-mobile.css) and the tab bar come in from a little to the
   // left, under a shade that lifts as the page goes.
@@ -588,10 +598,25 @@
   }
 
   // Let go at x (px) moving at vx (px/ms): slide the rest of the way and close the chat, or back.
+  function releaseBack(x, vx) {
+    settleBack(vx > BACK_FLING_PX_MS || (vx > -0.1 && x > backSlide.width * BACK_CLOSE_AT));
+  }
+
+  // Back on an open chat: the page starts in place, with the list and shade where a swipe would
+  // start them, and slides away from the next frame on (a transition needs a starting frame).
+  function slideChatClosed() {
+    if (!startBack()) return false;
+    placeBack(0);
+    requestAnimationFrame(function () {
+      if (backSlide) settleBack(true);
+    });
+    return true;
+  }
+
+  // The page slides the rest of the way out and the chat closes, or slides back into place.
   // The chat is closed only once the page is out of sight: Zalo swaps it for the list within a
   // frame, and the list is already in place by then.
-  function releaseBack(x, vx) {
-    var close = vx > BACK_FLING_PX_MS || (vx > -0.1 && x > backSlide.width * BACK_CLOSE_AT);
+  function settleBack(close) {
     root.classList.add('zw-back-settle');
     placeBack(close ? backSlide.width : 0);
     setTimeout(function () {
@@ -650,11 +675,9 @@
 
   swipeHandlers.pointerdown = function (ev) {
     endSwipe(false);
-    if (backSlide || ev.pointerType !== 'touch' || !ev.isPrimary || !root.classList.contains('zw-skin')) return;
+    if (backSlide || ev.pointerType !== 'touch' || !ev.isPrimary) return;
     var target = ev.target;
-    if (!target || !target.closest || !target.closest(SWIPE_AREA) ||
-        !document.getElementById('messageViewContainer') ||
-        !document.querySelector('#chatViewContainer .conv-back-btn')) return;
+    if (!target || !target.closest || !target.closest(SWIPE_AREA) || !chatSlidable()) return;
     var bubble = target.closest(BUBBLE);
     var row = bubble && bubble.closest('.chat-message');
     if (row) {
