@@ -56,6 +56,15 @@ class MainActivity : Activity() {
         private const val REQ_MEDIA_PERMISSIONS = 1002
         private const val MAX_RENDERER_RESTARTS = 3
         private const val RENDERER_RESTART_WINDOW_MS = 60_000L
+        private const val RETRY_FIRST_MS = 3_000L
+        private const val RETRY_MAX_MS = 30_000L
+
+        private val RETRYABLE_ERRORS = setOf(
+            WebViewClient.ERROR_HOST_LOOKUP, WebViewClient.ERROR_CONNECT, WebViewClient.ERROR_TIMEOUT
+        )
+
+        // Per process, not per Activity: a renderer restart recreates the Activity.
+        private val rendererRestarts = ArrayDeque<Long>()
 
         private val ZALO_DOMAINS = listOf("zalo.me", "zaloapp.com", "zadn.vn", "zdn.vn", "zalo.vn")
 
@@ -83,7 +92,10 @@ class MainActivity : Activity() {
     private var clearHistoryOnLoad = false
     private var resumed = false
     private var recreatePending = false
-    private val rendererRestarts = ArrayDeque<Long>()
+    // The page itself failed to load (offline at launch, DNS): retried while the app is on screen.
+    private var loadFailed = false
+    private var retryDelayMs = RETRY_FIRST_MS
+    private val retryLoad = Runnable { if (loadFailed && resumed) webView.reload() }
     private var splash: View? = null
     private lateinit var rootLayout: FrameLayout
     private lateinit var rootBackground: RootBackground
@@ -127,6 +139,9 @@ class MainActivity : Activity() {
         if (recreatePending) {
             recreatePending = false
             recreate()
+        } else if (loadFailed) {
+            webView.removeCallbacks(retryLoad)
+            webView.reload()
         }
     }
 
@@ -137,6 +152,8 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        webView.removeCallbacks(retryLoad)
+        downloads.abortAll()
         (webView.parent as? ViewGroup)?.removeView(webView)
         webView.destroy()
         super.onDestroy()
@@ -216,9 +233,11 @@ class MainActivity : Activity() {
 
     /** inject.js reports Zalo's page background whenever its light/dark theme changes. */
     fun setPageColor(css: String) {
+        // parseColor throws StringIndexOutOfBounds (not IllegalArgument) for "", and this runs on
+        // the UI thread, where an uncaught exception would crash the app.
         val color = try {
             Color.parseColor(css)
-        } catch (e: IllegalArgumentException) {
+        } catch (e: RuntimeException) {
             return
         }
         if (color == prefs.pageColor) return
@@ -301,10 +320,15 @@ class MainActivity : Activity() {
                 }
                 "blob", "data", "about", "javascript" -> false
                 else -> {
-                    openExternal(uri)
+                    // tel:, intent:, market:… open other apps; an embedded frame only gets to on a tap.
+                    if (request.isForMainFrame || request.hasGesture()) openExternal(uri)
                     true
                 }
             }
+        }
+
+        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            loadFailed = false
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
@@ -312,13 +336,23 @@ class MainActivity : Activity() {
                 clearHistoryOnLoad = false
                 view.clearHistory()
             }
+            if (!loadFailed) retryDelayMs = RETRY_FIRST_MS
             injectAll()
             CookieManager.getInstance().flush()
         }
 
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+            if (!request.isForMainFrame) return
             // Show WebView's error page instead of a splash that never goes away.
-            if (request.isForMainFrame) hideSplash()
+            hideSplash()
+            // No network yet (e.g. the app opened as the phone woke up): WebView's error page has no
+            // retry button, so try again by itself, backing off, while the app is on screen.
+            if (error.errorCode in RETRYABLE_ERRORS && isZaloHost(request.url.host)) {
+                loadFailed = true
+                view.removeCallbacks(retryLoad)
+                if (resumed) view.postDelayed(retryLoad, retryDelayMs)
+                retryDelayMs = (retryDelayMs * 2).coerceAtMost(RETRY_MAX_MS)
+            }
         }
 
         override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
@@ -369,9 +403,13 @@ class MainActivity : Activity() {
                 putExtra(Intent.EXTRA_ALLOW_MULTIPLE, params.mode == FileChooserParams.MODE_OPEN_MULTIPLE)
             }
 
+            // While the picker (often a heavy gallery or camera app) covers us, keep the renderer from
+            // being the first thing killed for memory: the picked files go to the page that asked.
+            view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
             try {
                 startActivityForResult(Intent.createChooser(intent, null), REQ_FILE_CHOOSER)
             } catch (e: ActivityNotFoundException) {
+                view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
                 fileCallback = null
                 callback.onReceiveValue(null)
                 toast("Không tìm thấy ứng dụng chọn file")
@@ -397,6 +435,7 @@ class MainActivity : Activity() {
             super.onActivityResult(requestCode, resultCode, data)
             return
         }
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
         val callback = fileCallback ?: return
         fileCallback = null
 
@@ -601,7 +640,8 @@ class MainActivity : Activity() {
                 val bars = root.rootWindowInsets?.getInsets(WindowInsets.Type.systemBars())?.bottom ?: 0
                 val lift = (bounds.upperBound.bottom - bars).coerceAtLeast(0)
                 webView.evaluateJavascript(
-                    "window.__zwKeyboard&&__zwKeyboard($opening,$lift,${animation.durationMillis},${System.currentTimeMillis()})",
+                    "window.__zwKeyboard&&__zwKeyboard($opening,$lift,${animation.durationMillis}," +
+                        "${System.currentTimeMillis()},${webView.height})",
                     null
                 )
             }

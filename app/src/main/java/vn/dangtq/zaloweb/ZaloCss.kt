@@ -4,7 +4,6 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import java.io.ByteArrayInputStream
 import java.io.File
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -20,7 +19,8 @@ import java.net.URL
  * page for ~730 ms with the rule, ~370 ms without.
  *
  * The file name carries a content hash, so the patched copy is cached on disk for good; on any
- * failure the request goes to the network untouched.
+ * failure the request goes to the network untouched. A version without the rule is remembered
+ * and left to the network too, so the app only ever serves a copy it actually changed.
  */
 class ZaloCss(cacheRoot: File, private val userAgent: String) {
     private val dir = File(cacheRoot, "zalo-css")
@@ -28,11 +28,14 @@ class ZaloCss(cacheRoot: File, private val userAgent: String) {
     /** Called on a WebView background thread. */
     fun intercept(request: WebResourceRequest): WebResourceResponse? {
         val url = request.url
+        if (request.method != "GET" || url.host != STATIC_HOST) return null
         val name = url.lastPathSegment ?: return null
-        if (request.method != "GET" || url.host != STATIC_HOST || !MAIN_CSS.matches(name)) return null
+        if (!MAIN_CSS.matches(name)) return null
         val css = try {
-            synchronized(this) { cached(name) ?: download(url.toString(), name) }
-        } catch (e: IOException) {
+            synchronized(this) {
+                if (File(dir, name + UNPATCHED).exists()) null else cached(name) ?: download(url.toString(), name)
+            }
+        } catch (e: Exception) {
             null
         } ?: return null
         return WebResourceResponse(
@@ -52,7 +55,12 @@ class ZaloCss(cacheRoot: File, private val userAgent: String) {
             conn.setRequestProperty("User-Agent", userAgent)
             if (conn.responseCode != HttpURLConnection.HTTP_OK) return null
             val text = conn.inputStream.use { it.readBytes() }.toString(Charsets.UTF_8)
-            val patched = SLOW_RULE.replace(text, "").toByteArray(Charsets.UTF_8)
+            if (!SLOW_SELECTOR.containsMatchIn(text)) {
+                store(name + UNPATCHED, ByteArray(0))
+                return null
+            }
+            // Only the selector goes, so the rule still parses even inside a selector list.
+            val patched = SLOW_SELECTOR.replace(text, NO_MATCH).toByteArray(Charsets.UTF_8)
             store(name, patched)
             return patched
         } finally {
@@ -74,7 +82,9 @@ class ZaloCss(cacheRoot: File, private val userAgent: String) {
 
     private companion object {
         const val STATIC_HOST = "zalo-chat-static.zadn.vn"
+        const val UNPATCHED = ".unpatched"
+        const val NO_MATCH = ".zw-removed"
         val MAIN_CSS = Regex("""web-startup\.[0-9a-f]+\.css""")
-        val SLOW_RULE = Regex("""\.mini-chat__message:has\(\.mini-chat__sel-check\)>\*\{[^}]*\}""")
+        val SLOW_SELECTOR = Regex("""\.mini-chat__message:has\(\.mini-chat__sel-check\)>\*(?=\s*[,{])""")
     }
 }

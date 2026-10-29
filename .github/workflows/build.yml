@@ -3,10 +3,18 @@ name: Build APK
 on:
   push:
     branches: [main]
+    # A README edit alone doesn't need a new APK (and version code).
+    paths-ignore: ['**/*.md']
   workflow_dispatch:
 
 permissions:
   contents: write
+
+# Two quick pushes build one after the other, so "Latest" is always the newest version code
+# (the other order would make the newest release a downgrade that can't be installed).
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -56,6 +64,8 @@ jobs:
           overwrite: true
 
       - name: Publish GitHub Release
+        # A manual run on another branch still builds (artifact above) but doesn't publish.
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

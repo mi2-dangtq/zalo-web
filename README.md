@@ -10,8 +10,9 @@ còn Zalo Web thì không).
 
 ## Tải và cài
 
-Mỗi lần push lên `main`, GitHub Actions build và tạo một
-[Release](../../releases/latest) có file `ZaloWeb-0.1.<số build>.apk`.
+Mỗi lần push lên `main` (trừ khi chỉ sửa file `.md`), GitHub Actions build và tạo một
+[Release](../../releases/latest) có file `ZaloWeb-0.1.<số build>.apk`. Hai lần push sát nhau
+được build lần lượt, nên bản "Latest" luôn là bản mới nhất.
 Mở trang đó trên điện thoại, tải APK và cài (cho phép "cài ứng dụng không rõ nguồn gốc" cho trình duyệt).
 Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
 
@@ -19,12 +20,16 @@ Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
 
 - User-Agent Chrome desktop (Windows) — số phiên bản lấy từ WebView thật.
 - Giữ đăng nhập (cookie, DOM storage, IndexedDB), flush cookie khi app vào nền.
+- Mở app lúc chưa có mạng (vừa mở khoá máy, mất sóng): tự tải lại sau 3 s, 6 s, 12 s… (tối đa
+  30 s một lần) trong khi app đang mở, và ngay khi quay lại app, thay vì đứng mãi ở trang lỗi.
+- Renderer của WebView chết thì dựng lại; chết liên tục (3 lần trong một phút) thì dừng hẳn
+  thay vì lặp vô hạn.
 - Gửi ảnh/file (chọn nhiều file), tải file về thư mục **Download**
   (kể cả file `blob:`/`data:` mà Zalo Web tạo rồi thu hồi ngay).
 - Gọi thoại/video: xin quyền camera/micro khi Zalo yêu cầu (chỉ cấp cho domain Zalo).
 - Nút Back như app: đóng popup/hộp thoại/trình xem ảnh → đóng khung thông tin → đóng cuộc
-  chat (trượt đi giống vuốt trong chat) → về màn hình chính (Zalo Web không ghi lịch sử khi mở
-  chat nên phải tự xử lý).
+  chat (trượt đi giống vuốt trong chat; bấm Back lúc chat còn đang tải thì chat trượt đi ngay
+  khi hiện ra) → về màn hình chính (Zalo Web không ghi lịch sử khi mở chat nên phải tự xử lý).
 - Mở app mượt: màn chờ có icon cho tới khi Zalo vẽ xong giao diện; không có hiệu ứng kéo quá
   đà ở cuối danh sách; giữ tay không bôi đen chữ/hiện thanh Sao chép (giữ tay lên tin nhắn
   vẫn mở menu tin nhắn của Zalo; ô nhập tin vẫn chọn chữ được).

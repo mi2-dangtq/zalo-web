@@ -58,14 +58,15 @@
   root.classList.toggle('zw-skin', !!cfg.mobileCss);
   if (!cfg.mobileCss) root.classList.remove('zw-tools-open');
 
+  // Runs after every batch of Zalo DOM changes, so it only searches the composer bar when it can.
   window.__zwEnsureToolsToggle = function () {
-    var existing = document.querySelector('.zw-tools-toggle');
     if (!root.classList.contains('zw-skin')) {
-      if (existing) existing.remove();
+      var stray = document.querySelector('.zw-tools-toggle');
+      if (stray) stray.remove();
       return;
     }
     var bar = document.getElementById('chat-box-bar-id');
-    if (!bar || (existing && bar.contains(existing))) return;
+    if (!bar || bar.querySelector('.zw-tools-toggle')) return;
     var btn = document.createElement('div');
     btn.className = 'zw-tools-toggle';
     btn.setAttribute('role', 'button');
@@ -190,12 +191,17 @@
 
   window.__zwSyncOpening = function () {
     var el = document.getElementById('zw-opening');
-    if (!el) return;
+    if (!el || el.classList.contains('zw-opening--done')) return;
     var age = Date.now() - el.__zwShownAt;
-    if ((age >= OPENING_SLIDE_MS && document.querySelector('#chatViewContainer #header')) ||
-        age > OPENING_MAX_MS) {
+    var arrived = !!document.querySelector('#chatViewContainer #header') || chatOpen();
+    if (arrived && el.__zwCloseOnArrival && age <= OPENING_MAX_MS) {
+      // Back was pressed while Zalo was opening it (see back() below): it leaves once it can slide.
+      if (!chatSlidable()) return;
       window.__zwHideOpening();
+      slideChatClosed();
+      return;
     }
+    if ((age >= OPENING_SLIDE_MS && arrived) || age > OPENING_MAX_MS) window.__zwHideOpening();
   };
 
   // Mirrors Zalo's chat header (back icon, title, empty subtitle line) so the swap is seamless.
@@ -234,7 +240,7 @@
     document.body.appendChild(el);
     // Check every frame until Zalo's chat view is up (or the timeout passes).
     (function poll() {
-      if (!document.getElementById('zw-opening')) return;
+      if (!el.isConnected || el.classList.contains('zw-opening--done')) return;
       window.__zwSyncOpening();
       requestAnimationFrame(poll);
     })();
@@ -251,6 +257,7 @@
           window.__zwHideOpening();
           return;
         }
+        el.__zwOpened = true;
         open();
       });
     });
@@ -295,7 +302,9 @@
   // only re-read when the classes change.
   window.__zwReportPageColor = function () {
     var body = document.body;
-    var key = location.hostname + '|' + root.className + '|' + (body ? body.className : '');
+    // Our own zw-* classes (flipped by every swipe and keyboard slide) don't change the colour.
+    var key = location.hostname + '|' + root.className.replace(/\bzw-\S+/g, '') + '|' +
+      (body ? body.className : '');
     if (window.__zwPageColorKey === key) return;
     window.__zwPageColorKey = key;
     var raw = location.hostname !== 'chat.zalo.me' ? '#ffffff'
@@ -356,7 +365,8 @@
   // Zalo opens chats/panels without touching history, so Back must close them by hand:
   // popup/modal/viewer (Escape, then its close button) -> chat-list search -> conversation info
   // panel -> conversation (slides away as a swipe right does) -> let Android decide.
-  // Closing a chat animates for ~0.9s with the back button still mounted; swallow repeats meanwhile.
+  // Zalo's own close (a Danh bạ page, or a chat without the skin) animates for ~0.9s with the back
+  // button still mounted; swallow repeats meanwhile. A chat with the skin slides away instead.
   var CHAT_CLOSE_MS = 1500;
   var MIN_OVERLAY_PX = 8;
   // Kept on window so a re-injection in the middle of a Back sequence doesn't reset it.
@@ -385,9 +395,27 @@
   function topOverlay() {
     var kids = document.body ? document.body.children : [];
     for (var i = kids.length - 1; i >= 0; i--) {
+      // One that ignored Back and has since gone away may be reused for the next popup.
+      if (backState.stuck.has(kids[i]) && !isShown(kids[i], MIN_OVERLAY_PX)) backState.stuck.delete(kids[i]);
       if (isOverlay(kids[i])) return kids[i];
     }
     return null;
+  }
+
+  // Clicks anything: an SVG icon (which some close buttons are) has no click().
+  function tap(el) {
+    if (typeof el.click === 'function') {
+      el.click();
+    } else {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window }));
+    }
+  }
+
+  // The back button of what is on screen: Danh bạ keeps its pages' (hidden) one while a chat is open.
+  function shownConvBack() {
+    return Array.prototype.filter.call(document.querySelectorAll('.conv-back-btn'), function (b) {
+      return isShown(b);
+    })[0] || null;
   }
 
   function pressEscape() {
@@ -410,11 +438,26 @@
     });
   }
 
-  // Returns true when something inside Zalo was closed.
+  // Returns true when something inside Zalo was closed (or is being closed). A script error stays
+  // in the app too: MainActivity would otherwise send the app to the background.
   window.__zwBack = function () {
-    // A chat is still opening behind the placeholder: cancel the placeholder, stay in the app.
-    if (document.getElementById('zw-opening') && !chatOpen()) {
-      if (window.__zwCancelOpening) window.__zwCancelOpening();
+    try {
+      return back();
+    } catch (e) {
+      console.error('zw back', e);
+      return true;
+    }
+  };
+
+  function back() {
+    // A chat page is already sliding away (a swipe let go, or the Back before).
+    if (sliding()) return true;
+    var opening = document.getElementById('zw-opening');
+    if (opening && !chatOpen()) {
+      // A chat is still opening behind the placeholder. If its tap hasn't reached Zalo yet, drop
+      // it; if it has, the chat can't be stopped, so it slides away as soon as it is there.
+      if (opening.__zwOpened) opening.__zwCloseOnArrival = true;
+      else if (window.__zwCancelOpening) window.__zwCancelOpening();
       return true;
     }
     var overlay;
@@ -426,7 +469,7 @@
       if (backState.presses < 2) {
         backState.presses++;
         var close = backState.presses > 1 && overlay.querySelector('.modal-header-icon, [class*="close"]');
-        if (close) close.click(); else pressEscape();
+        if (close) tap(close); else pressEscape();
         return true;
       }
       // Ignored both Escape and its close button: skip it and look underneath.
@@ -441,7 +484,7 @@
       // Blur first: Zalo ignores "Đóng" while the search box still has focus, and a focused
       // box would also keep the keyboard up.
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      searchClose.click();
+      tap(searchClose);
       return true;
     }
     // Side panels with their own X that ignore Escape, e.g. "Tìm kiếm trong trò chuyện"
@@ -452,29 +495,30 @@
     )[0];
     if (panelClose) {
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
-      (panelClose.closest('.z--btn--v2') || panelClose).click();
+      tap(panelClose.closest('.z--btn--v2') || panelClose);
       return true;
     }
     var infoToggle = document.querySelector('#header .fa-outline-right-bar-active');
     if (isShown(infoToggle)) {
-      (infoToggle.closest('.z--btn--v2') || infoToggle).click();
+      tap(infoToggle.closest('.z--btn--v2') || infoToggle);
       return true;
     }
-    var convBack = document.querySelector('.conv-back-btn');
-    if (isShown(convBack)) {
-      if (backSlide) return true; // already sliding away (a swipe let go, or the Back before)
+    var convBack = shownConvBack();
+    if (convBack) {
+      // A chat leaves as a swipe right lets it go.
+      if (chatSlidable() && slideChatClosed()) return true;
+      // The Danh bạ pages (and no skin): Zalo's own close keeps the button up for a while.
       var now = Date.now();
-      // A chat leaves as a swipe right lets it go; the Danh bạ pages (same button) just close.
-      if (now - backState.lastChatClose > CHAT_CLOSE_MS && !(chatSlidable() && slideChatClosed())) {
+      if (now - backState.lastChatClose > CHAT_CLOSE_MS) {
         backState.lastChatClose = now;
         window.__zwClosingChatAt = now;
         leaveListRows();
-        convBack.click();
+        tap(convBack);
       }
       return true;
     }
     return false;
-  };
+  }
 
   // ---------------------------------------------------------------- Swipes in a chat
 
@@ -501,6 +545,7 @@
   var BACK_SHADE = 0.12; // and this much darker
   var BACK_SETTLE_MS = 250; // html.zw-back-settle in zalo-mobile.css
   var BACK_CLOSE_WAIT_MS = 2500;
+  var SLIDE_STALE_MS = 6000; // far longer than any slide; one still marked after that was left over
   var SWIPE_AREA = '#messageViewContainer, #chatViewContainer #header';
   var BUBBLE = '[id^="message-frame_"]';
   var swipe = null;
@@ -561,12 +606,31 @@
       !!document.querySelector('#chatViewContainer .conv-back-btn');
   }
 
+  // A chat page is sliding: this run's own slide, or one an earlier injection of this script
+  // started (html.zw-back stays on until that one finishes). One marked for longer than any slide
+  // takes was left over: it is cleared, so Back and swipes never stay blocked.
+  function sliding() {
+    if (!backSlide && !root.classList.contains('zw-back')) return false;
+    if (Date.now() - (window.__zwBackSlideAt || 0) < SLIDE_STALE_MS) return true;
+    if (backSlide) {
+      finishBack();
+    } else {
+      root.classList.remove('zw-back', 'zw-back-settle');
+      Array.prototype.forEach.call(document.querySelectorAll('#zw-back-shade'), function (s) { s.remove(); });
+      ['#container main', '#sidebarNav', '#zw-tabbar'].forEach(function (sel) {
+        var el = document.querySelector(sel);
+        if (el) el.style.transform = '';
+      });
+    }
+    return false;
+  }
+
   // The chat page (Zalo's <main>) slides. Under it, the chat list (#sidebarNav, kept laid out but
   // hidden while a chat is open, see zalo-mobile.css) and the tab bar come in from a little to the
   // left, under a shade that lifts as the page goes.
   function startBack() {
     var page = document.querySelector('#container main');
-    if (!page) return false;
+    if (!page || sliding()) return false;
     leaveListRows();
     var shade = document.createElement('div');
     shade.id = 'zw-back-shade';
@@ -575,12 +639,14 @@
       page: page, shade: shade, width: innerWidth,
       under: [document.getElementById('sidebarNav'), document.getElementById('zw-tabbar')].filter(Boolean)
     };
+    window.__zwBackSlideAt = Date.now();
     root.classList.add('zw-back');
     return true;
   }
 
   function placeBack(x) {
     var b = backSlide;
+    if (!b) return;
     var progress = Math.min(1, Math.max(0, x / b.width));
     b.page.style.transform = 'translate3d(' + Math.round(x) + 'px,0,0)';
     var under = 'translate3d(' + Math.round((progress - 1) * b.width * BACK_PARALLAX) + 'px,0,0)';
@@ -590,6 +656,7 @@
 
   function finishBack() {
     var b = backSlide;
+    if (!b) return;
     backSlide = null;
     root.classList.remove('zw-back', 'zw-back-settle');
     b.page.style.transform = '';
@@ -599,23 +666,25 @@
 
   // Let go at x (px) moving at vx (px/ms): slide the rest of the way and close the chat, or back.
   function releaseBack(x, vx) {
+    if (!backSlide) return;
     settleBack(vx > BACK_FLING_PX_MS || (vx > -0.1 && x > backSlide.width * BACK_CLOSE_AT));
   }
 
   // Back on an open chat: the page starts in place, with the list and shade where a swipe would
-  // start them, and slides away from the next frame on (a transition needs a starting frame).
+  // start them. Reading a style makes the browser settle that start now, as a frame would, so the
+  // list and the shade move too (a transition starts from the last style the browser computed).
   function slideChatClosed() {
     if (!startBack()) return false;
     placeBack(0);
-    requestAnimationFrame(function () {
-      if (backSlide) settleBack(true);
-    });
+    getComputedStyle(backSlide.shade).opacity;
+    settleBack(true);
     return true;
   }
 
   // The page slides the rest of the way out and the chat closes, or slides back into place.
   // The chat is closed only once the page is out of sight: Zalo swaps it for the list within a
-  // frame, and the list is already in place by then.
+  // frame, and the list is already in place by then. Each slide clicks Zalo's back button once:
+  // Back is swallowed while it runs (see sliding()), so nothing else can have closed the chat.
   function settleBack(close) {
     root.classList.add('zw-back-settle');
     placeBack(close ? backSlide.width : 0);
@@ -625,12 +694,8 @@
         finishBack();
         return;
       }
-      // A Back press during the slide may have started closing it already.
-      if (Date.now() - backState.lastChatClose > CHAT_CLOSE_MS) {
-        backState.lastChatClose = Date.now(); // a Back press right after doesn't close it twice
-        window.__zwClosingChatAt = Date.now();
-        btn.click();
-      }
+      window.__zwClosingChatAt = Date.now();
+      tap(btn);
       var since = Date.now();
       (function waitForList() {
         if (document.querySelector('#chatViewContainer .conv-back-btn') &&
@@ -675,7 +740,7 @@
 
   swipeHandlers.pointerdown = function (ev) {
     endSwipe(false);
-    if (backSlide || ev.pointerType !== 'touch' || !ev.isPrimary) return;
+    if (ev.pointerType !== 'touch' || !ev.isPrimary || sliding()) return;
     var target = ev.target;
     if (!target || !target.closest || !target.closest(SWIPE_AREA) || !chatSlidable()) return;
     var bubble = target.closest(BUBBLE);
@@ -761,7 +826,17 @@
     if (swipe && ev.pointerId === swipe.id) endSwipe(false, ev);
   };
 
-  // On document, capture phase. Replaced on every injection, like the opening click above.
+  // A long-press opened Zalo's menu (see "Long-press = right-click"): the finger drifting on from
+  // there must not start a swipe under the menu.
+  window.__zwDropSwipe = function () {
+    if (swipe && !swipe.started) dropSwipe(swipe);
+  };
+
+  // On document, capture phase. Replaced on every injection, like the opening click above. A
+  // gesture the previous run was in the middle of ends first (it would never see its pointerup):
+  // its page slides back, its reply arrow goes.
+  if (window.__zwEndGesture) window.__zwEndGesture();
+  window.__zwEndGesture = function () { endSwipe(false); };
   var oldSwipeHandlers = window.__zwSwipeHandlers || {};
   Object.keys(oldSwipeHandlers).forEach(function (type) {
     document.removeEventListener(type, oldSwipeHandlers[type], true);
@@ -819,14 +894,17 @@
     return Math.max(0, Math.min(rec.ms, Date.now() - rec.startedAt));
   }
 
-  // Called by the app as the keyboard starts moving; liftPx is its height above the navigation bar.
-  window.__zwKeyboard = function (opening, liftPx, ms, startedAt) {
+  // Called by the app as the keyboard starts moving; liftPx is its height above the navigation bar
+  // in screen pixels, viewPx the WebView's height in screen pixels.
+  window.__zwKeyboard = function (opening, liftPx, ms, startedAt, viewPx) {
     var rec = { ms: ms, startedAt: startedAt };
     var view = chatToSlide();
     if (opening) {
       // Reopened while still sliding down: carry on from where the chat is.
       var from = view && view.__zwKeyboardSlide ? slideOffset(view) : 0;
-      if (view) slideChat(view, from, -liftPx / devicePixelRatio, ms, sinceStart(rec));
+      // CSS px per screen pixel also follows the page scale (a fixed Độ rộng hiển thị, pinch zoom).
+      var cssPerPx = viewPx > 0 ? innerHeight / viewPx : 1 / devicePixelRatio;
+      if (view) slideChat(view, from, -liftPx * cssPerPx, ms, sinceStart(rec));
       return;
     }
     if (view && view.__zwKeyboardLifting) {
@@ -928,10 +1006,12 @@
         now - (window.__zwComposerUsedAt || 0) > COMPOSER_USE_MS ||
         now - (window.__zwClosingChatAt || 0) < COMPOSER_USE_MS) return;
     var keeper = keyboardKeeper();
+    keeper.value = ''; // a key typed into it meanwhile goes nowhere; don't let them pile up
     window.__zwFocusAllowedUntil = Date.now() + KEEPER_MS; // past the "no surprise keyboard" guard
     keeper.focus({ preventScroll: true });
     setTimeout(function () {
       if (document.activeElement === keeper) keeper.blur();
+      keeper.value = '';
     }, KEEPER_MS);
   };
   document.addEventListener('focusout', window.__zwHoldKeyboard, true);
@@ -961,9 +1041,11 @@
   var awayElement = null;
   var blocking = false;
 
+  // Up to <body> only: a tap on something just under it (the tab bar, the opening placeholder)
+  // would otherwise count as "next to" every field on the page.
   function touchedNear(field) {
     if (!lastDown || Date.now() - lastDownAt > FOCUS_GRACE_MS) return false;
-    for (var n = lastDown, i = 0; n && i <= NEAR_LEVELS; n = n.parentElement, i++) {
+    for (var n = lastDown, i = 0; n && n !== document.body && i <= NEAR_LEVELS; n = n.parentElement, i++) {
       if (n.contains(field)) return true;
     }
     return false;
@@ -1041,6 +1123,7 @@
     var down = touchDown;
     touchDown = null;
     if (editableOf(down.el)) return;
+    if (window.__zwDropSwipe) window.__zwDropSwipe();
     ev.preventDefault();
     ev.stopImmediatePropagation();
     down.el.dispatchEvent(new MouseEvent('contextmenu', {

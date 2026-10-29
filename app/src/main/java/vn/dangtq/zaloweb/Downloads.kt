@@ -29,6 +29,11 @@ import java.util.UUID
  */
 class Downloads(private val activity: MainActivity) : DownloadListener {
 
+    private companion object {
+        const val MAX_OPEN_SAVES = 8
+        const val STALE_SAVE_MS = 5 * 60_000L // nothing written for this long: the page gave up on it
+    }
+
     val bridge = Bridge()
 
     override fun onDownloadStart(
@@ -74,10 +79,35 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
     }
 
     /** A Download/ entry being written in chunks from JS; IS_PENDING until [Bridge.finishSave]. */
-    private class PendingSave(val uri: Uri, val out: OutputStream)
+    private class PendingSave(val uri: Uri, val out: OutputStream) {
+        @Volatile var touchedAt = System.currentTimeMillis()
+    }
 
-    // Bridge calls all arrive on the single JavaBridge thread, so no locking is needed.
+    // Bridge calls arrive on the JavaBridge thread, [abortAll] on the UI thread.
     private val saves = HashMap<String, PendingSave>()
+
+    private fun takeSave(id: String): PendingSave? = synchronized(saves) { saves.remove(id) }
+
+    private fun discard(save: PendingSave) {
+        try {
+            save.out.close()
+        } catch (ignored: Throwable) {
+        }
+        try {
+            activity.contentResolver.delete(save.uri, null, null)
+        } catch (ignored: Throwable) {
+        }
+    }
+
+    /** Saves the page never finished (it reloaded or went away mid-file): close and delete them. */
+    fun abortAll(olderThanMs: Long = 0) {
+        val now = System.currentTimeMillis()
+        val stale = synchronized(saves) {
+            val ids = saves.filterValues { now - it.touchedAt >= olderThanMs }.keys
+            ids.mapNotNull { saves.remove(it) }
+        }
+        stale.forEach { discard(it) }
+    }
 
     inner class Bridge {
         /** Small payloads (data: URLs): [data] is plain base64 or a data: URL. */
@@ -95,6 +125,11 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
          */
         @JavascriptInterface
         fun beginSave(fileName: String?, mime: String?): String {
+            abortAll(STALE_SAVE_MS)
+            if (synchronized(saves) { saves.size } >= MAX_OPEN_SAVES) {
+                activity.toast("Đang lưu quá nhiều file, thử lại sau")
+                return ""
+            }
             return try {
                 val name = buildFileName(fileName, mime)
                 val resolver = activity.contentResolver
@@ -113,7 +148,7 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
                     throw t
                 }
                 val id = UUID.randomUUID().toString()
-                saves[id] = PendingSave(uri, out)
+                synchronized(saves) { saves[id] = PendingSave(uri, out) }
                 id
             } catch (t: Throwable) {
                 activity.toast("Lưu file thất bại: ${t.message}")
@@ -123,9 +158,10 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
 
         @JavascriptInterface
         fun appendSave(id: String, base64: String): Boolean {
-            val save = saves[id] ?: return false
+            val save = synchronized(saves) { saves[id] } ?: return false
             return try {
                 save.out.write(Base64.decode(base64, Base64.DEFAULT))
+                save.touchedAt = System.currentTimeMillis()
                 true
             } catch (t: Throwable) {
                 abortSave(id)
@@ -136,7 +172,7 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
 
         @JavascriptInterface
         fun finishSave(id: String) {
-            val save = saves.remove(id) ?: return
+            val save = takeSave(id) ?: return
             try {
                 save.out.close()
                 val resolver = activity.contentResolver
@@ -155,12 +191,7 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
 
         @JavascriptInterface
         fun abortSave(id: String) {
-            val save = saves.remove(id) ?: return
-            try {
-                save.out.close()
-            } catch (ignored: Throwable) {
-            }
-            activity.contentResolver.delete(save.uri, null, null)
+            discard(takeSave(id) ?: return)
         }
 
         @JavascriptInterface
@@ -201,11 +232,14 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
     private fun normalizeMime(mime: String?): String? =
         mime?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
 
-    /** Prefer the extension's MIME type when the blob type is missing or generic. */
+    /**
+     * The extension's MIME type wins: when the type disagrees with the name, MediaStore appends the
+     * type's own extension ("data.csv" saved as text/plain becomes "data.csv.txt"). A name it
+     * doesn't know keeps the generic type, which MediaStore leaves alone.
+     */
     private fun resolveMime(name: String, mime: String?): String {
-        val given = normalizeMime(mime)
-        if (given != null && given != "application/octet-stream") return given
         val ext = name.substringAfterLast('.', "").lowercase()
+        if (ext.isEmpty()) return normalizeMime(mime) ?: "application/octet-stream"
         return MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext) ?: "application/octet-stream"
     }
 
