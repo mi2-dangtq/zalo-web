@@ -74,7 +74,8 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
     (cùng đường cong và thời lượng của bàn phím) thay vì nhảy một phát;
   - ẩn quảng cáo và lời nhắc: banner "Sử dụng Zalo PC", banner zBusiness lúc mở app, gợi ý
     "Đồng bộ tin nhắn gần đây?" (đồng bộ vẫn có ở Cài đặt → Dữ liệu → Đồng bộ tin nhắn) và thẻ
-    nâng cấp zCloud trong thông tin My Documents.
+    nâng cấp zCloud trong thông tin My Documents. Banner zCloud ở đầu danh sách chat thì được
+    tự bấm "Đóng" (chỉ ẩn thì Zalo vẫn chừa một khoảng trắng ~72px phía trên các cuộc chat).
 
   File này phụ thuộc tên class của Zalo; nếu Zalo cập nhật làm vỡ giao diện, tắt nó trong menu.
 

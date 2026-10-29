@@ -98,6 +98,18 @@
   };
   window.__zwEnsureToolsToggle();
 
+  // Zalo's zCloud upsell at the top of the chat list is hidden by zalo-mobile.css, but the list
+  // still lays its rows out below it, leaving a ~72px blank. Its own "Đóng" makes Zalo drop it and
+  // move the chats up (Zalo remembers that); it is closed again whenever it comes back.
+  window.__zwCloseListBanner = function () {
+    var list = root.classList.contains('zw-skin') && document.getElementById('conversationList');
+    var close = list && list.querySelector('.conversation-list__banner__full-mode .conversation-list__banner__close');
+    if (!close || close.__zwClicked) return;
+    close.__zwClicked = true;
+    close.click();
+  };
+  window.__zwCloseListBanner();
+
   // Bottom tab bar. Zalo folds tabs into "•••" when its rail is short, so the skin hides the rail
   // at its natural size and this bar mirrors it: icon + unread badge copied from each real tab,
   // and a tap clicks the real tab. Left out: "Zalo Cloud" (a zCloud upsell) and "Công cụ"
@@ -351,6 +363,7 @@
       requestAnimationFrame(function () {
         skinQueued = false;
         window.__zwEnsureToolsToggle();
+        window.__zwCloseListBanner();
         window.__zwRenderTabBar();
         window.__zwSyncOpening();
         window.__zwReportPageColor();
