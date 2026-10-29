@@ -35,6 +35,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("text_zoom", 100)
         set(value) = sp.edit().putInt("text_zoom", value).apply()
 
+    /** Zalo's text in the phone's own font ([SystemFont]) instead of Zalo's Segoe UI. */
+    var systemFont: Boolean
+        get() = sp.getBoolean("system_font", true)
+        set(value) = sp.edit().putBoolean("system_font", value).apply()
+
     var customCss: String
         get() = sp.getString("custom_css", "") ?: ""
         set(value) = sp.edit().putString("custom_css", value).apply()
@@ -175,6 +180,7 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
             "Giao diện điện thoại: ${if (prefs.mobileLayout) "Bật" else "Tắt"}",
             "Độ rộng hiển thị: ${widthLabel(prefs.viewportWidth)}",
             "Cỡ chữ: ${prefs.textZoom}%",
+            "Font của máy: ${if (prefs.systemFont) "Bật" else "Tắt"}",
             "CSS tùy chỉnh",
             "Đăng xuất / xóa dữ liệu"
         )
@@ -186,8 +192,9 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
                     1 -> toggleMobileLayout()
                     2 -> chooseWidth()
                     3 -> chooseTextZoom()
-                    4 -> editCustomCss()
-                    5 -> confirmClearData()
+                    4 -> toggleSystemFont()
+                    5 -> editCustomCss()
+                    6 -> confirmClearData()
                 }
             }
             .setNegativeButton("Đóng", null)
@@ -198,6 +205,12 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
         prefs.mobileLayout = !prefs.mobileLayout
         activity.applySettings()
         activity.toast(if (prefs.mobileLayout) "Đã bật giao diện điện thoại" else "Đã tắt giao diện điện thoại")
+    }
+
+    private fun toggleSystemFont() {
+        prefs.systemFont = !prefs.systemFont
+        activity.applySettings()
+        activity.toast(if (prefs.systemFont) "Zalo dùng font của máy" else "Zalo dùng font riêng của Zalo")
     }
 
     private fun chooseWidth() {

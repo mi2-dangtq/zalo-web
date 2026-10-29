@@ -1,6 +1,6 @@
 // Injected by MainActivity.injectAll() after every page load and settings change.
 // window.__zwConfig = { viewport: <px, 0 = auto>, css: <base css>, mobileCss: <zalo-mobile css or ''>,
-//                       customCss: <user css> }
+//                       customCss: <user css>, systemFont: <url of the phone's font or ''> }
 (function () {
   'use strict';
   var cfg = window.__zwConfig || {};
@@ -20,8 +20,25 @@
     head.appendChild(el);
   }
 
+  // "Font của máy": the phone's own font (served by the app, see SystemFont.kt) in place of Zalo's
+  // Segoe UI. Re-declaring Zalo's font families at every weight wins over Zalo's own faces (the
+  // face declared last wins), so all text keeps its CSS and Zalo's icon font is left alone. If the
+  // file fails to load, Zalo's own face is used.
+  function systemFontCss(url) {
+    if (!url) return '';
+    var css = '';
+    ['SegoeuiPc', 'SegoeuiPcText'].forEach(function (family) {
+      for (var weight = 100; weight <= 900; weight += 100) {
+        css += '@font-face{font-family:' + family + ';src:url("' + url + '");font-weight:' + weight +
+          ';font-style:normal;font-display:block}';
+      }
+    });
+    return css;
+  }
+
   setStyle('zw-base', cfg.css || '');
   setStyle('zw-mobile', cfg.mobileCss || '');
+  setStyle('zw-font', systemFontCss(cfg.systemFont));
   setStyle('zw-custom', cfg.customCss || '');
 
   // ---------------------------------------------------------------- Viewport

@@ -82,6 +82,9 @@ class MainActivity : Activity() {
 
     private lateinit var downloads: Downloads
     private lateinit var zaloCss: ZaloCss
+    private val systemFont = SystemFont()
+    // The font version the page was last given ("" = none, null = not injected yet).
+    private var injectedFont: String? = null
     private var injectJs = ""
     private var injectCss = ""
     private var mobileCss = ""
@@ -142,6 +145,8 @@ class MainActivity : Activity() {
         } else if (loadFailed) {
             webView.removeCallbacks(retryLoad)
             webView.reload()
+        } else if (injectedFont != null && injectedFont != currentFontVersion()) {
+            injectAll() // a new font was chosen in Themes while we were away
         }
     }
 
@@ -208,13 +213,19 @@ class MainActivity : Activity() {
 
     /** Re-applies base/phone/custom CSS, viewport width and the download hooks (idempotent). */
     fun injectAll() {
+        val font = if (prefs.systemFont) systemFont.current() else null
+        injectedFont = font?.version ?: ""
         val config = JSONObject()
             .put("viewport", prefs.viewportWidth)
             .put("css", injectCss)
             .put("mobileCss", if (prefs.mobileLayout) mobileCss else "")
             .put("customCss", prefs.customCss)
+            .put("systemFont", font?.url ?: "")
         webView.evaluateJavascript("window.__zwConfig=$config;\nwindow.__zwKeyboardOpen=$keyboardOpen;\n$injectJs", null)
     }
+
+    private fun currentFontVersion(): String =
+        if (prefs.systemFont) systemFont.current()?.version ?: "" else ""
 
     /** Whether the keyboard is shown, as the window insets say; mirrored to the page as __zwKeyboardOpen. */
     private var keyboardOpen = false
@@ -287,7 +298,7 @@ class MainActivity : Activity() {
 
     private inner class ZaloWebViewClient : WebViewClient() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
-            zaloCss.intercept(request)
+            systemFont.intercept(request) ?: zaloCss.intercept(request)
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val uri = request.url

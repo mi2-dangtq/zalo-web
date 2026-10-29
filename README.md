@@ -36,8 +36,15 @@ Bản mới cài đè được bản cũ vì luôn ký cùng một keystore.
 - Mở cuộc chat không tự bật bàn phím: chỉ bật khi bạn chạm vào ô nhập tin.
 - Link ngoài Zalo mở bằng trình duyệt; domain giữ lại trong app:
   `*.zalo.me`, `*.zaloapp.com`, `*.zadn.vn`, `*.zdn.vn`, `*.zalo.vn`.
+- **Font của máy** (mặc định bật): chữ trong Zalo dùng đúng font điện thoại đang dùng thay cho
+  Segoe UI riêng của Zalo. WebView không tự theo font chọn trong Themes của HyperOS (nó luôn vẽ
+  bằng Roboto gốc), nên app đọc file font của máy (`/data/system/theme/fonts/Roboto-Regular.ttf`
+  khi có font tự chọn, không thì MiSans) rồi khai báo lại font "SegoeuiPc" của Zalo bằng file đó;
+  icon của Zalo không đổi. Đổi font trong Themes thì quay lại app là Zalo đổi theo. Font chỉ có
+  bản Regular (như SF Pro, Inter tự nhập) thì chữ đậm vừa (tên cuộc chat) hiện thành chữ thường,
+  giống giao diện máy.
 - Nút nổi (kéo được) mở menu: tải lại, giao diện điện thoại, độ rộng hiển thị, cỡ chữ,
-  CSS tùy chỉnh, đăng xuất/xóa dữ liệu.
+  font của máy, CSS tùy chỉnh, đăng xuất/xóa dữ liệu.
 
 ## Giao diện trên điện thoại
 
