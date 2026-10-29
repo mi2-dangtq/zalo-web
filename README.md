@@ -47,6 +47,8 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
 - **Độ rộng hiển thị → Tự động** (mặc định): giữ viewport `width=device-width` của Zalo,
   trang hiển thị đúng tỉ lệ 1:1 như app điện thoại. Chọn 480/600/800… nếu muốn thu nhỏ để
   thấy nhiều nội dung hơn.
+- App luôn ở chiều dọc như app Zalo điện thoại. Nằm ngang thì trang chỉ cao ~330px, Zalo gộp
+  "Tin nhắn" và "Danh bạ" vào một tab "•••" nên thanh tab dưới mất hai tab đó.
 - **Giao diện điện thoại** (mặc định bật) chèn `assets/zalo-mobile.css` để trông như app Zalo
   trên điện thoại:
   - thanh icon dọc bên trái thành **thanh tab dưới** (Tin nhắn, Danh bạ, Tài liệu, Cài đặt;
