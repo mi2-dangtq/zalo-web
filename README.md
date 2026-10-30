@@ -70,6 +70,11 @@ khi trang hẹp hơn khoảng 850px. Vì vậy:
     (hoặc nút Back) đóng chat bằng đúng hiệu ứng trượt đó, chỉ là không theo tay vì HyperOS giữ
     mép màn hình cho cử chỉ của nó và chỉ báo Back khi đã thả tay. Vuốt một tin nhắn sang trái để
     trả lời tin đó (mở luôn bàn phím; máy rung nhẹ khi đã kéo đủ xa). Cuộn lên xuống vẫn như cũ;
+  - **xem ảnh như app điện thoại**: ảnh tràn ngang trên nền đen, không còn cột ảnh nhỏ, nút
+    mũi tên và nút phóng to/thu nhỏ của bản máy tính; thanh trạng thái, thanh điều hướng chuyển đen
+    và nút nổi tạm ẩn. Vuốt ngang để sang ảnh trước/sau, chụm hai ngón hoặc chạm đúp để phóng to
+    (kéo để di chuyển), vuốt xuống để đóng, chạm một lần để ẩn/hiện thanh tiêu đề và thanh công cụ
+    (Zalo vốn đóng trình xem khi chạm vào ảnh);
   - **bàn phím trượt cùng cuộc chat**: khi bàn phím mở/đóng, tin nhắn và ô soạn tin trượt theo nó
     (cùng đường cong và thời lượng của bàn phím) thay vì nhảy một phát;
   - ẩn quảng cáo và lời nhắc: banner "Sử dụng Zalo PC", banner zBusiness lúc mở app, gợi ý

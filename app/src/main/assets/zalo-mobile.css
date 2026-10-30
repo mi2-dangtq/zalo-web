@@ -566,3 +566,100 @@ html.zw-tools-open #chat-box-bar-id .chat-box-toolbar > li {
 html.zw-tools-open .zw-tools-toggle {
   color: #0068ff;
 }
+
+/* ------------------------------------------------------------------ Photo viewer */
+
+/* Zalo's media viewer is its desktop one. On a phone: the photo edge to edge on black, without
+   the thumbnail rail, the ↑/↓ buttons and the zoom buttons; inject.js swipes and pinches instead.
+   The rail is only hidden, not removed: Zalo sizes the photo from the room it actually gets.
+   Only the viewer itself is black, so a swipe down can fade it and show the chat behind. */
+.image-show-modal .media-viewer {
+  background-color: #000 !important;
+}
+
+.image-show-modal .media-viewer__header,
+.image-show-modal .image-show__title,
+.image-show-modal .media-viewer__body,
+.image-show-modal .media-viewer__footer {
+  background: transparent !important;
+}
+
+.image-show-modal .media-viewer__body__left {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  padding: 0 !important;
+}
+
+.image-show-modal .media-viewer__body__right,
+.image-show-modal .navigatorWrapper,
+.image-show-modal .image-action .pv-z-reset,
+.image-show-modal .image-action .pv-z-reset + .btn,
+.image-show-modal .otherBtn.fullscreen,
+.image-show-modal .image-action action-group::after {
+  display: none !important;
+}
+
+/* No letterbox around the photo; inject.js owns every touch on it. */
+.image-show-modal .photo-player-container__photo {
+  background: transparent !important;
+}
+
+.image-show-modal .media-viewer__body {
+  touch-action: none;
+}
+
+/* Footer: the sender takes the room the hidden buttons leave, and long names end in "…". */
+.image-show-modal .media-viewer__footer__child.sender {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+.image-show-modal .media-viewer__footer__child.image-action,
+.image-show-modal .media-viewer__footer__child.other {
+  flex: none !important;
+  gap: 4px;
+}
+
+.image-show-modal .media-viewer__footer__child.other {
+  margin-left: 12px !important;
+}
+
+.image-show-modal .media-viewer__footer sender-info,
+.image-show-modal .media-viewer__footer sender-name,
+.image-show-modal .media-viewer__footer send-time {
+  min-width: 0 !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-show-modal .media-viewer__footer sender-info {
+  flex: 1 1 auto !important;
+  width: auto !important;
+}
+
+/* A tap on the photo hides the title and tool bars, another brings them back. */
+.image-show-modal .media-viewer__header,
+.image-show-modal .media-viewer__footer {
+  transition: opacity 0.2s;
+}
+
+html.zw-viewer-bare .image-show-modal .media-viewer__header,
+html.zw-viewer-bare .image-show-modal .media-viewer__footer {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Zoom, a swipe to the next photo, or a swipe down letting go: the rest of the way. */
+.image-show-modal .photo-player-container {
+  transform-origin: 0 0;
+}
+
+.image-show-modal .photo-player-container.zw-viewer-settle {
+  transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1);
+}
+
+.image-show-modal .media-viewer.zw-viewer-settle {
+  transition: background-color 0.22s cubic-bezier(0.2, 0, 0, 1);
+}

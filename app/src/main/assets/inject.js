@@ -367,6 +367,7 @@
         window.__zwRenderTabBar();
         window.__zwSyncOpening();
         window.__zwReportPageColor();
+        window.__zwReportViewer();
       });
     });
     window.__zwSkinObserver.observe(document.body, {
@@ -874,6 +875,348 @@
   window.__zwSwipeHandlers = swipeHandlers;
   Object.keys(swipeHandlers).forEach(function (type) {
     document.addEventListener(type, swipeHandlers[type], true);
+  });
+
+  // ---------------------------------------------------------------- Photo viewer
+
+  // Zalo's photo viewer (.image-show-modal, a child of <body>) is its desktop one: zalo-mobile.css
+  // lays it out edge to edge on black, and with the skin on it takes phone gestures here:
+  //  - swipe left / right: the photo follows the finger and the next / previous one comes in
+  //    (Zalo's own ↓ / ↑ buttons, which the skin hides);
+  //  - pinch, or double-tap, to zoom; drag a zoomed photo to move it;
+  //  - swipe down: the photo follows the finger and the viewer fades; let go far or fast enough
+  //    and it closes;
+  //  - a tap hides or shows the title and tool bars. Zalo closes the viewer on any click on the
+  //    photo, so those clicks never reach it.
+  // The zoom is a transform of our own on .photo-player-container, which fills the viewer and
+  // holds Zalo's centred (and maybe rotated) photo, so it works in screen space. It goes back to
+  // 1 whenever the photo changes. The app turns the system bars black and hides its floating
+  // button while the viewer is up (bridge.viewer).
+  var VIEWER = '.image-show-modal';
+  var VIEWER_CANVAS = '.image-show-modal .photo-player-container';
+  var VIEWER_PHOTO = '#imageShowMainImage';
+  var ZOOM_MAX = 5;
+  var ZOOM_DOUBLE_TAP = 2.5;
+  var DOUBLE_TAP_MS = 300;
+  var DOUBLE_TAP_PX = 40;
+  var TAP_MAX_MS = 400; // held longer, a touch is not a tap
+  var PAGE_AT = 0.25; // of the width: a sideways swipe let go further shows the next photo
+  var PAGE_FLING_PX_MS = 0.4;
+  var CLOSE_AT_PX = 120;
+  var CLOSE_FLING_PX_MS = 0.5;
+  var CLOSE_FADE_PX = 300; // a swipe down this long fades the viewer out completely
+  var VIEWER_SETTLE_MS = 220; // .zw-viewer-settle in zalo-mobile.css
+  var PAGE_WAIT_MS = 700;
+  var viewerZoom = { canvas: null, photoId: null, s: 1, x: 0, y: 0 };
+  var viewerTouch = null;
+  var viewerBusy = false; // a page turn or a close is playing
+  var lastViewerTap = null;
+
+  function viewerOpen() {
+    var modal = document.querySelector(VIEWER);
+    return !!modal && !modal.classList.contains('fadeOut');
+  }
+
+  // The skin's viewer is on screen or gone: the app's system bars and floating button follow.
+  window.__zwReportViewer = function (force) {
+    var open = root.classList.contains('zw-skin') && viewerOpen();
+    if (!open) root.classList.remove('zw-viewer-bare');
+    if (open === window.__zwViewerShown && !force) return;
+    window.__zwViewerShown = open;
+    try { bridge.viewer(open); } catch (e) { /* older app or not running inside it */ }
+  };
+  window.__zwReportViewer(true);
+
+  // The canvas and the photo on screen; a new photo (or a new viewer) starts unzoomed.
+  function viewerParts() {
+    var canvas = document.querySelector(VIEWER_CANVAS);
+    var photo = canvas && canvas.querySelector(VIEWER_PHOTO);
+    if (!photo) return null;
+    var img = photo.querySelector('img');
+    var id = img ? img.id : '';
+    if (canvas !== viewerZoom.canvas || id !== viewerZoom.photoId) {
+      viewerZoom = { canvas: canvas, photoId: id, s: 1, x: 0, y: 0 };
+      placeCanvas(canvas, viewerZoom, false);
+    }
+    return { canvas: canvas, photo: photo };
+  }
+
+  // With transform-origin 0 0: a canvas point p shows at (x, y) + s * p.
+  function placeCanvas(canvas, z, settle) {
+    canvas.classList.toggle('zw-viewer-settle', !!settle);
+    canvas.style.transform = z.s === 1 && z.x === 0 && z.y === 0 ? ''
+      : 'translate3d(' + z.x + 'px,' + z.y + 'px,0) scale(' + z.s + ')';
+  }
+
+  // The viewer's room and the photo's box unzoomed, both relative to the canvas.
+  function viewerLayout(parts) {
+    var area = parts.canvas.parentElement.getBoundingClientRect(); // the canvas fills it, untransformed
+    var r = parts.photo.getBoundingClientRect();
+    var z = viewerZoom;
+    return {
+      area: area,
+      left: (r.left - area.left - z.x) / z.s,
+      top: (r.top - area.top - z.y) / z.s,
+      width: r.width / z.s,
+      height: r.height / z.s
+    };
+  }
+
+  // Zoom to s keeping the photo point under the screen point (px, py) where it is.
+  function zoomAround(from, s, px, py, layout) {
+    var lx = (px - layout.area.left - from.x) / from.s;
+    var ly = (py - layout.area.top - from.y) / from.s;
+    return { s: s, x: px - layout.area.left - s * lx, y: py - layout.area.top - s * ly };
+  }
+
+  // A photo larger than the room covers it (no black edge shows); a smaller one stays centred.
+  function clampZoom(z, layout) {
+    var s = Math.min(ZOOM_MAX, Math.max(1, z.s));
+    if (s === 1) return { s: 1, x: 0, y: 0 }; // where Zalo centres it
+    function axis(offset, start, size, room) {
+      var len = size * s;
+      if (len <= room) return (room - len) / 2 - start * s;
+      return Math.min(-start * s, Math.max(room - (start + size) * s, offset));
+    }
+    return {
+      s: s,
+      x: axis(z.x, layout.left, layout.width, layout.area.width),
+      y: axis(z.y, layout.top, layout.height, layout.area.height)
+    };
+  }
+
+  function setZoom(parts, z, settle) {
+    viewerZoom.s = z.s;
+    viewerZoom.x = z.x;
+    viewerZoom.y = z.y;
+    placeCanvas(parts.canvas, z, settle);
+  }
+
+  // 1 = the viewer as usual, 0 = gone (the chat shows through), while a swipe down drags it.
+  function fadeViewer(level, settle) {
+    var viewer = document.querySelector(VIEWER + ' .media-viewer');
+    if (!viewer) return;
+    viewer.classList.toggle('zw-viewer-settle', !!settle);
+    if (level >= 1) viewer.style.removeProperty('background-color');
+    else viewer.style.setProperty('background-color', 'rgba(0,0,0,' + level.toFixed(3) + ')', 'important');
+    Array.prototype.forEach.call(viewer.querySelectorAll('.media-viewer__header, .media-viewer__footer'), function (bar) {
+      bar.style.transition = settle ? '' : 'none';
+      bar.style.opacity = level >= 1 ? '' : String(level);
+    });
+  }
+
+  function onViewerTap(parts, ev) {
+    var last = lastViewerTap;
+    if (last && ev.timeStamp - last.at < DOUBLE_TAP_MS &&
+        Math.abs(ev.clientX - last.x) < DOUBLE_TAP_PX && Math.abs(ev.clientY - last.y) < DOUBLE_TAP_PX) {
+      clearTimeout(last.timer);
+      lastViewerTap = null;
+      var layout = viewerLayout(parts);
+      var z = viewerZoom.s > 1 ? { s: 1, x: 0, y: 0 }
+        : clampZoom(zoomAround(viewerZoom, ZOOM_DOUBLE_TAP, ev.clientX, ev.clientY, layout), layout);
+      setZoom(parts, z, true);
+      return;
+    }
+    lastViewerTap = {
+      at: ev.timeStamp, x: ev.clientX, y: ev.clientY,
+      timer: setTimeout(function () {
+        lastViewerTap = null;
+        if (viewerOpen()) root.classList.toggle('zw-viewer-bare');
+      }, DOUBLE_TAP_MS)
+    };
+  }
+
+  // Zalo's ↓ (step 1, the newer photo) or ↑ button. The photo leaves on the side it was swiped
+  // to, then the next one comes in from the other side; with no next photo, it comes back.
+  function turnPage(parts, step, width) {
+    var btn = document.querySelector(VIEWER + ' .navBtn.fa-Chevron_' + (step > 0 ? 'Down' : 'Up') + '_24_Line');
+    if (!btn) {
+      setZoom(parts, { s: 1, x: 0, y: 0 }, true);
+      return;
+    }
+    viewerBusy = true;
+    var from = viewerZoom.photoId;
+    setZoom(parts, { s: 1, x: -step * width, y: 0 }, true);
+    setTimeout(function () {
+      tap(btn);
+      var since = Date.now();
+      (function waitForPhoto() {
+        var canvas = document.querySelector(VIEWER_CANVAS);
+        var img = canvas && canvas.querySelector(VIEWER_PHOTO + ' img');
+        var turned = !!img && img.id !== from;
+        if (canvas && !turned && Date.now() - since < PAGE_WAIT_MS) {
+          requestAnimationFrame(waitForPhoto);
+          return;
+        }
+        viewerBusy = false;
+        if (!canvas) return;
+        viewerZoom = { canvas: canvas, photoId: img ? img.id : '', s: 1, x: 0, y: 0 };
+        if (turned) {
+          placeCanvas(canvas, { s: 1, x: step * width, y: 0 }, false);
+          getComputedStyle(canvas).transform; // start the slide in from there
+        }
+        placeCanvas(canvas, viewerZoom, true);
+      })();
+    }, VIEWER_SETTLE_MS);
+  }
+
+  // A swipe down let go: the photo carries on out of sight as the viewer fades, then Zalo closes it.
+  function closeViewer(parts, x, height) {
+    viewerBusy = true;
+    setZoom(parts, { s: 1, x: x, y: height }, true);
+    fadeViewer(0, true);
+    setTimeout(function () {
+      viewerBusy = false;
+      var close = document.getElementById('image-show__close');
+      if (close && viewerOpen()) tap(close); else if (viewerOpen()) pressEscape();
+    }, VIEWER_SETTLE_MS);
+  }
+
+  function endViewerTouch(act, ev) {
+    var t = viewerTouch;
+    if (!t) return;
+    viewerTouch = null;
+    var parts = t.parts;
+    if (!parts.canvas.isConnected) return;
+    if (t.kind === 'pinch' || t.kind === 'pan') {
+      setZoom(parts, clampZoom(viewerZoom, viewerLayout(parts)), true);
+      return;
+    }
+    var still = !ev || ev.timeStamp - t.lastAt > BACK_STILL_MS;
+    var vx = act && !still ? t.vx : 0;
+    var vy = act && !still ? t.vy : 0;
+    if (t.kind === 'page') {
+      var width = t.layout.area.width;
+      var dx = viewerZoom.x;
+      if (act && (dx < -width * PAGE_AT || vx < -PAGE_FLING_PX_MS)) turnPage(parts, 1, width);
+      else if (act && (dx > width * PAGE_AT || vx > PAGE_FLING_PX_MS)) turnPage(parts, -1, width);
+      else setZoom(parts, { s: 1, x: 0, y: 0 }, true);
+      return;
+    }
+    if (t.kind === 'close') {
+      if (act && (viewerZoom.y > CLOSE_AT_PX || vy > CLOSE_FLING_PX_MS)) {
+        closeViewer(parts, viewerZoom.x, t.layout.area.height);
+      } else {
+        setZoom(parts, { s: 1, x: 0, y: 0 }, true);
+        fadeViewer(1, true);
+      }
+      return;
+    }
+    if (!t.kind && act && ev && ev.timeStamp - t.downAt < TAP_MAX_MS) onViewerTap(parts, ev);
+  }
+
+  // A second finger landed: whatever the first one was doing becomes a pinch.
+  function startPinch(t) {
+    var ids = Object.keys(t.points);
+    var a = t.points[ids[0]];
+    var b = t.points[ids[1]];
+    if (t.kind === 'page' || t.kind === 'close') {
+      fadeViewer(1, false);
+      setZoom(t.parts, { s: 1, x: 0, y: 0 }, false);
+    }
+    t.kind = 'pinch';
+    t.ids = ids;
+    t.from = { s: viewerZoom.s, x: viewerZoom.x, y: viewerZoom.y };
+    t.mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    t.dist = Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+    t.layout = viewerLayout(t.parts);
+  }
+
+  var viewerHandlers = {};
+
+  viewerHandlers.pointerdown = function (ev) {
+    if (ev.pointerType !== 'touch') return;
+    var t = viewerTouch;
+    if (t && t.points[ev.pointerId] === undefined && Object.keys(t.points).length === 1 && t.kind !== 'pinch') {
+      t.points[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+      startPinch(t);
+      return;
+    }
+    if (t) return; // a third finger
+    if (viewerBusy || !root.classList.contains('zw-skin') || !ev.target.closest || !ev.target.closest(VIEWER_CANVAS)) return;
+    var parts = viewerParts();
+    if (!parts) return;
+    var points = {};
+    points[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+    viewerTouch = {
+      parts: parts, points: points, kind: null, x: ev.clientX, y: ev.clientY,
+      from: { s: viewerZoom.s, x: viewerZoom.x, y: viewerZoom.y }, layout: viewerLayout(parts),
+      downAt: ev.timeStamp, lastX: ev.clientX, lastY: ev.clientY, lastAt: ev.timeStamp, vx: 0, vy: 0
+    };
+  };
+
+  viewerHandlers.pointermove = function (ev) {
+    var t = viewerTouch;
+    if (!t || !t.points[ev.pointerId]) return;
+    t.points[ev.pointerId] = { x: ev.clientX, y: ev.clientY };
+    if (t.kind === 'pinch') {
+      var a = t.points[t.ids[0]];
+      var b = t.points[t.ids[1]];
+      if (!a || !b) return;
+      var s = Math.min(ZOOM_MAX, Math.max(0.8, t.from.s * Math.hypot(a.x - b.x, a.y - b.y) / t.dist));
+      var z = zoomAround(t.from, s, t.mid.x, t.mid.y, t.layout);
+      // The midpoint moving drags the photo along.
+      z.x += (a.x + b.x) / 2 - t.mid.x;
+      z.y += (a.y + b.y) / 2 - t.mid.y;
+      setZoom(t.parts, z, false);
+      return;
+    }
+    var dx = ev.clientX - t.x;
+    var dy = ev.clientY - t.y;
+    if (!t.kind) {
+      if (Math.abs(dx) < SWIPE_SLOP_PX && Math.abs(dy) < SWIPE_SLOP_PX) return;
+      t.kind = t.from.s > 1 ? 'pan' : Math.abs(dx) > Math.abs(dy) ? 'page' : dy > 0 ? 'close' : 'none';
+      // Count from here, so nothing jumps by the slop.
+      t.x = ev.clientX;
+      t.y = ev.clientY;
+      dx = 0;
+      dy = 0;
+    }
+    var dt = ev.timeStamp - t.lastAt;
+    if (dt > 0) {
+      t.vx = 0.6 * (ev.clientX - t.lastX) / dt + 0.4 * t.vx;
+      t.vy = 0.6 * (ev.clientY - t.lastY) / dt + 0.4 * t.vy;
+      t.lastX = ev.clientX;
+      t.lastY = ev.clientY;
+      t.lastAt = ev.timeStamp;
+    }
+    if (t.kind === 'pan') {
+      setZoom(t.parts, clampZoom({ s: t.from.s, x: t.from.x + dx, y: t.from.y + dy }, t.layout), false);
+    } else if (t.kind === 'page') {
+      setZoom(t.parts, { s: 1, x: dx, y: 0 }, false);
+    } else if (t.kind === 'close') {
+      setZoom(t.parts, { s: 1, x: dx, y: Math.max(0, dy) }, false);
+      fadeViewer(1 - Math.min(1, Math.max(0, dy) / CLOSE_FADE_PX), false);
+    }
+  };
+
+  // A pinch ends with its first finger up; the other one does nothing more until it lifts.
+  viewerHandlers.pointerup = function (ev) {
+    if (viewerTouch && viewerTouch.points[ev.pointerId]) endViewerTouch(true, ev);
+  };
+
+  viewerHandlers.pointercancel = function (ev) {
+    if (viewerTouch && viewerTouch.points[ev.pointerId]) endViewerTouch(false, ev);
+  };
+
+  // Zalo closes the viewer on a click on the photo: the photo's taps are ours.
+  viewerHandlers.click = function (ev) {
+    if (root.classList.contains('zw-skin') && ev.target.closest && ev.target.closest(VIEWER_CANVAS)) {
+      ev.stopPropagation();
+      ev.preventDefault();
+    }
+  };
+
+  // Replaced on every injection, like the swipe handlers above.
+  if (window.__zwEndViewerGesture) window.__zwEndViewerGesture();
+  window.__zwEndViewerGesture = function () { endViewerTouch(false); };
+  var oldViewerHandlers = window.__zwViewerHandlers || {};
+  Object.keys(oldViewerHandlers).forEach(function (type) {
+    document.removeEventListener(type, oldViewerHandlers[type], true);
+  });
+  window.__zwViewerHandlers = viewerHandlers;
+  Object.keys(viewerHandlers).forEach(function (type) {
+    document.addEventListener(type, viewerHandlers[type], true);
   });
 
   // ---------------------------------------------------------------- Keyboard (MainActivity.KeyboardAnimation)

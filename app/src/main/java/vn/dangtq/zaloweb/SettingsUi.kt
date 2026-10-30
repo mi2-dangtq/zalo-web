@@ -9,6 +9,7 @@ import android.graphics.drawable.GradientDrawable
 import android.text.InputType
 import android.view.Gravity
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.EditText
@@ -107,6 +108,11 @@ class SettingsUi(private val activity: MainActivity, private val root: FrameLayo
         .toFloat().coerceAtLeast(minY())
 
     private fun yForFraction(f: Float) = minY() + f.coerceIn(0f, 1f) * (maxY() - minY())
+
+    /** Off screen while Zalo's photo viewer is up, where it would sit on the photo. */
+    fun setFabHidden(hidden: Boolean) {
+        fab.visibility = if (hidden) View.GONE else View.VISIBLE
+    }
 
     private fun fractionForY(y: Float): Float {
         val range = maxY() - minY()

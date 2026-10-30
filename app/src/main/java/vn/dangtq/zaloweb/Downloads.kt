@@ -211,6 +211,12 @@ class Downloads(private val activity: MainActivity) : DownloadListener {
             activity.runOnUiThread { activity.setPageColor(color) }
         }
 
+        /** inject.js: Zalo's photo viewer opened or closed (phone skin only). */
+        @JavascriptInterface
+        fun viewer(open: Boolean) {
+            activity.runOnUiThread { activity.setViewerOpen(open) }
+        }
+
         /** inject.js: the tick a swipe gives once letting go will reply / go back. */
         @JavascriptInterface
         fun haptic() {

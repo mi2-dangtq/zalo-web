@@ -102,6 +102,9 @@ class MainActivity : Activity() {
     private var splash: View? = null
     private lateinit var rootLayout: FrameLayout
     private lateinit var rootBackground: RootBackground
+    private lateinit var settingsUi: SettingsUi
+    // Zalo's photo viewer is up (inject.js): black system bars and no floating button meanwhile.
+    private var viewerOpen = false
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -129,7 +132,7 @@ class MainActivity : Activity() {
 
         downloads = Downloads(this)
         configureWebView()
-        SettingsUi(this, root).attach()
+        settingsUi = SettingsUi(this, root).also { it.attach() }
         showSplash(root)
         setupBackNavigation()
 
@@ -256,16 +259,30 @@ class MainActivity : Activity() {
         applySystemBarStyle()
     }
 
+    /** inject.js reports Zalo's photo viewer opening and closing (phone skin only). */
+    fun setViewerOpen(open: Boolean) {
+        if (open == viewerOpen) return
+        viewerOpen = open
+        applySystemBarStyle()
+        settingsUi.setFabHidden(open)
+    }
+
     /**
      * Bar areas follow the page: its background (light or dark theme) behind the navigation bar,
-     * and with the phone skin's blue headers, a blue status bar band with white icons.
+     * and with the phone skin's blue headers, a blue status bar band with white icons. Both are
+     * black, with white icons, while the photo viewer is up.
      */
     @Suppress("DEPRECATION")
     private fun applySystemBarStyle() {
         val blue = prefs.mobileLayout
-        val darkPage = Color.luminance(prefs.pageColor) < 0.5f
-        rootBackground.baseColor = prefs.pageColor
-        rootBackground.bandColor = if (blue) getColor(R.color.skin_header) else Color.TRANSPARENT
+        val base = if (viewerOpen) Color.BLACK else prefs.pageColor
+        val darkPage = Color.luminance(base) < 0.5f
+        rootBackground.baseColor = base
+        rootBackground.bandColor = when {
+            viewerOpen -> Color.BLACK
+            blue -> getColor(R.color.skin_header)
+            else -> Color.TRANSPARENT
+        }
         val lightStatus = !blue && !darkPage
         val lightNav = !darkPage
         if (Build.VERSION.SDK_INT >= 30) {
@@ -340,6 +357,7 @@ class MainActivity : Activity() {
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
             loadFailed = false
+            setViewerOpen(false) // a new page has no viewer up
         }
 
         override fun onPageFinished(view: WebView, url: String?) {
